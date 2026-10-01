@@ -281,6 +281,18 @@ body[data-view="collection"] .reading-area{padding-top:28px}
 /* Quoted readings are text, not code: they keep the reading type, Tibetan included. */
 .note-content code{font-family:var(--serif);font-size:1em;background:none;padding:0}
 .note-loading{color:var(--muted)}
+/* Restricted texts are marked on their card and at the top of the text. */
+.work-card-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 12px}
+.work-card-head .work-card-kicker{white-space:nowrap}
+.work-card-restricted,.restricted-mark,.restricted-kicker{display:inline-flex;align-items:center;gap:6px;font:500 11px/1.4 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--red)}
+.work-card-restricted .icon,.restricted-mark .icon,.restricted-kicker .icon{width:14px;height:14px}
+.restricted-mark{margin:0 0 18px;padding:6px 10px;border:1px solid var(--red);border-radius:2px}
+.confirm-dialog{width:min(460px,calc(100vw - 32px))}
+.confirm-dialog .dialog-body{padding:28px 28px 24px}
+.confirm-dialog h2{font:400 26px/1.25 var(--display);margin:10px 0 12px}
+.confirm-dialog p#restricted-message{font:17px/1.65 var(--serif);margin:0 0 24px}
+.confirm-actions{display:flex;justify-content:flex-end;gap:12px}
+.confirm-actions button{min-width:96px;min-height:44px}
 /* Interface labels. */
 .toolbar-text{display:none;font:12px/1 var(--sans);margin-left:7px}
 @media(min-width:1100px){.toolbar-text{display:inline}}
@@ -317,7 +329,7 @@ body[data-view="collection"] .reading-area{padding-top:28px}
 <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
 <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h11"/></symbol>
 <symbol id="i-focus" viewBox="0 0 24 24"><path d="M8 4H4v4m12-4h4v4M4 16v4h4m12-4v4h-4M9 9h6v6H9z"/></symbol>
-<symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 4h12v17l-6-4-6 4V4Z"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/></symbol><symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 4h12v17l-6-4-6 4V4Z"/></symbol>
 <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H5v18h14V8l-5-5Zm0 0v5h5M8 12h8m-8 4h6"/></symbol>
 <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 15v6h16v-6"/></symbol>
 <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
@@ -361,6 +373,7 @@ body[data-view="collection"] .reading-area{padding-top:28px}
 
 </section>
 <header class="book-header" id="book-header" hidden>
+<p class="restricted-mark" id="restricted-mark" hidden><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg><span>Restricted text</span></p>
 <div class="edition-line"><span class="edition-label eyebrow" id="edition-label">Reading room</span><span class="edition-han" id="edition-han" aria-hidden="true">R</span></div>
 <div class="title-block" id="title-block"><div id="title-content"></div><div class="bookplate" aria-hidden="true"><span lang="bo" id="bookplate-text">བོད་ཡིག</span></div></div>
 <div class="meta-row"><div class="meta-left"><span class="source-kind" id="source-kind">Text</span><span class="meta-dot" aria-hidden="true"></span><span id="reading-estimate"></span></div><span class="source-status" id="source-status">Ready to read</span></div>
@@ -375,7 +388,7 @@ body[data-view="collection"] .reading-area{padding-top:28px}
 <dialog id="library-dialog" aria-labelledby="library-title"><div class="dialog-head"><div><h2 id="library-title">Open your own text</h2></div><button class="icon-button" data-close aria-label="Close library"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="dialog-body"><div class="library-tools"><button class="primary" id="import-library"><svg class="icon"><use href="#i-upload"/></svg>Choose files</button><button class="secondary" id="refresh-library" hidden><svg class="icon"><use href="#i-refresh"/></svg>Refresh published collection</button></div><p class="library-status" id="library-status">Choose a Markdown or text file, paste text, or open a public text URL.</p><ul class="library-list" id="library-list"></ul><div class="library-foot"><label class="field-label" for="url-input">Open a public text URL</label><form class="url-form" id="url-form"><input type="url" id="url-input" placeholder="https://example.org/text.md" required spellcheck="false" autocomplete="off"><button type="submit" class="primary" id="url-submit">Open link</button></form><p class="dialog-error" id="library-error" hidden role="alert"></p><details class="paste-details"><summary>Paste text</summary><label class="sr-only" for="paste-input">Markdown text</label><textarea id="paste-input" placeholder="# Your text&#10;&#10;Paste the Markdown here…" spellcheck="false"></textarea><button class="secondary" id="paste-button">Read this text <svg class="icon"><use href="#i-arrow"/></svg></button></details><p class="privacy-note">Files and pasted text stay on this device.</p></div></div></dialog>
 <dialog class="search-dialog" id="search-dialog" aria-label="Search this text"><div class="search-input-wrap"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><label for="search-input" class="sr-only">Search English or Tibetan</label><input id="search-input" type="text" placeholder="Find a word, a passage, a thought…" autocomplete="off" spellcheck="false"><button class="icon-button" data-close aria-label="Close search"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="search-scope"><span id="search-scope">In this volume</span><span id="search-count" aria-live="polite">Type to search</span></div><ul class="search-results" id="search-results"></ul><div class="search-empty" id="search-empty">Search this text in English or Tibetan.</div></dialog>
 <dialog class="settings-dialog" id="settings-dialog" aria-labelledby="settings-title"><div class="dialog-head"><div><p class="dialog-kicker">Make yourself at home</p><h2 id="settings-title">The reading page</h2></div><button class="icon-button" data-close aria-label="Close appearance settings"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="dialog-body"><div class="settings-group"><span class="field-label">Page palette</span><div class="theme-options" role="group" aria-label="Page palette"><button class="theme-choice" data-theme="auto" aria-pressed="true"><span class="theme-swatch" aria-hidden="true"></span>Auto</button><button class="theme-choice" data-theme="paper" aria-pressed="false"><span class="theme-swatch" aria-hidden="true"></span>Paper</button><button class="theme-choice" data-theme="mist" aria-pressed="false"><span class="theme-swatch" aria-hidden="true"></span>Mist</button><button class="theme-choice" data-theme="ink" aria-pressed="false"><span class="theme-swatch" aria-hidden="true"></span>Ink</button></div></div><div class="settings-group"><div class="settings-row"><label for="font-size">Text size</label><output id="size-value" for="font-size">20 px</output></div><input id="font-size" type="range" min="16" max="28" step="1" value="20"><div class="settings-row muted"><span style="font:15px var(--serif)">Aa</span><span style="font:25px var(--serif)">Aa</span></div></div><div class="settings-group"><div class="settings-row"><label for="tibetan-size">Tibetan size</label><output id="tibetan-value" for="tibetan-size">100%</output></div><input id="tibetan-size" type="range" min="90" max="140" step="5" value="100"></div><div class="settings-group"><span class="field-label">Line length</span><div class="segmented" role="group" aria-label="Line length"><button data-measure="620" aria-pressed="false">Intimate</button><button data-measure="720" aria-pressed="true">Balanced</button><button data-measure="840" aria-pressed="false">Spacious</button></div></div><div class="settings-group"><div class="settings-row"><label for="line-height">Line spacing</label><output id="leading-value" for="line-height">1.88</output></div><input id="line-height" type="range" min="1.5" max="2.2" step="0.02" value="1.88"></div><div class="settings-group"><label class="citation-setting" for="auto-citations"><input type="checkbox" id="auto-citations" checked><span><strong>Separate cited passages</strong><small>Recognize attributed quotations in plain paragraphs. Unclear boundaries stay as written. The original Markdown is never changed.</small></span></label></div><div class="settings-group switched-group" id="switched-group" hidden><p id="switched-count"></p><button class="text-button" id="show-all-english">Show all in English</button></div><div class="settings-group"><label class="citation-setting" for="single-key-shortcuts"><input type="checkbox" id="single-key-shortcuts" checked><span><strong>Single-key shortcuts</strong><small>/ search · T switch the passage’s language · B bookmark · F focus · L library. Turn off if they interfere with speech input or other tools.</small></span></label></div><p class="settings-preview">A little space for the words.<br><span lang="bo" style="font-family:var(--tibetan)">བོད་ཡིག</span></p><div class="settings-foot"><button class="text-button" id="reset-settings">Restore defaults</button><button class="text-button" id="demo-button">See the typography specimen</button></div></div></dialog>
-<dialog class="note-dialog" id="note-dialog" aria-labelledby="note-title"><div class="dialog-head"><h2 id="note-title">Note</h2><button class="icon-button" data-close aria-label="Close footnote"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="note-content" id="note-content"></div><div class="note-bottom"><button id="note-jump">Read in the endnotes <span aria-hidden="true">↗</span></button><a id="note-source" class="note-source" hidden target="_blank" rel="noopener noreferrer">Read on GitHub <span aria-hidden="true">↗</span></a></div></dialog>
+<dialog class="confirm-dialog" id="restricted-dialog" role="alertdialog" aria-labelledby="restricted-title" aria-describedby="restricted-message"><div class="dialog-body"><p class="restricted-kicker"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg><span>Restricted</span></p><h2 id="restricted-title"></h2><p id="restricted-message">This text is restricted. Confirm below that you have the required authorization to access it.</p><div class="confirm-actions"><button class="secondary" id="restricted-no">No</button><button class="primary" id="restricted-yes">Yes</button></div></div></dialog><dialog class="note-dialog" id="note-dialog" aria-labelledby="note-title"><div class="dialog-head"><h2 id="note-title">Note</h2><button class="icon-button" data-close aria-label="Close footnote"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="note-content" id="note-content"></div><div class="note-bottom"><button id="note-jump">Read in the endnotes <span aria-hidden="true">↗</span></button><a id="note-source" class="note-source" hidden target="_blank" rel="noopener noreferrer">Read on GitHub <span aria-hidden="true">↗</span></a></div></dialog>
 <dialog class="source-dialog" id="source-dialog" aria-labelledby="source-title"><div class="dialog-head"><div><p class="dialog-kicker">The files, unchanged</p><h2 id="source-title">Download &amp; export</h2></div><button class="icon-button" data-close aria-label="Close download and export"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="dialog-body"><p class="dialog-copy" id="source-description">The original Markdown is preserved exactly as loaded.</p><div class="source-actions"><a class="secondary" id="github-link" hidden target="_blank" rel="noopener noreferrer">View on GitHub <svg class="icon"><use href="#i-external"/></svg></a><button class="secondary" id="download-markdown" disabled><svg class="icon"><use href="#i-download"/></svg>Save Markdown</button><button class="primary" id="export-reader" disabled><svg class="icon"><use href="#i-book"/></svg>Save offline reading copy</button><button class="primary" id="export-epub" disabled><svg class="icon"><use href="#i-download"/></svg>Export EPUB</button><button class="secondary" id="print-button" disabled>Print</button></div><label class="field-label" for="source-textarea">Original Markdown (read-only)</label><textarea id="source-textarea" class="source-textarea" readonly spellcheck="false"></textarea><p class="privacy-note">An offline reading copy embeds this text inside a new HTML file. It does not include linked images, other volumes, or your reading history. Keep private texts private when sharing the copy.</p></div></dialog>
 <input id="file-input" type="file" multiple accept=".md,.markdown,.txt,text/markdown,text/plain" hidden>
 <div class="toast" id="toast" role="status" hidden><span id="toast-text"></span><button id="toast-action" hidden></button></div>
@@ -3687,7 +3700,7 @@ nav ol { padding-left: 1.3em; } nav li { margin: .6em 0; }
     const render = list => `<ol>${list.map(h => `<li><a href="content.xhtml#${escapeXML(h.id)}">${escapeXML(h.text)}</a>${h.children.length ? render(h.children) : ''}</li>`).join('')}</ol>`;
     return render(root);
   }
-  function build({root, title = 'Untitled text', author = '', language = 'en', source = '', identifier = '', date = new Date(), specimen = false}) {
+  function build({root, title = 'Untitled text', author = '', language = 'en', source = '', identifier = '', date = new Date(), specimen = false, restricted = false}) {
     if (!root || typeof root.cloneNode !== 'function') throw new TypeError('An already-sanitized manuscript DOM is required.');
     title = clean(title).trim().slice(0, 500) || 'Untitled text';
     author = clean(author).trim().slice(0, 500); language = validLanguage(language);
@@ -3701,7 +3714,8 @@ nav ol { padding-left: 1.3em; } nav li { margin: .6em 0; }
     const content = normalizedBody(root, language), headings = content.headings;
     const modified = date.toISOString().replace(/\.\d{3}Z$/, 'Z');
     const esc = escapeXML;
-    const notice = specimen ? '<p class="export-notice">Typography specimen only. This is not a translation of the source work.</p>' : '';
+    const notice = (specimen ? '<p class="export-notice">Typography specimen only. This is not a translation of the source work.</p>' : '')
+      + (restricted ? '<p class="export-notice">Restricted text. Read it only with the required authorization.</p>' : '');
     const images = content.imageCount ? `<p class="export-notice">${content.imageCount} image${content.imageCount === 1 ? ' is' : 's are'} represented by descriptive links. Linked images are not embedded and require an internet connection.</p>` : '';
     const titlepage = xhtml(title, language, `<section epub:type="titlepage" class="titlepage"><p class="edition">Reader · Reading edition</p><h1>${esc(title)}</h1>${author ? `<p>${esc(author)}</p>` : ''}${notice}${images}<p><a href="nav.xhtml">Contents</a></p>${source ? `<p class="export-notice"><a href="${esc(source)}">Manuscript source</a></p>` : ''}</section>`);
     const navigation = xhtml('Contents · ' + title, language, `<nav epub:type="toc" id="toc" role="doc-toc"><h1>Contents</h1>${headings.length ? navList(headings) : '<ol><li><a href="content.xhtml">' + esc(title) + '</a></li></ol>'}</nav><nav epub:type="landmarks" hidden="hidden"><h2>Guide</h2><ol><li><a epub:type="titlepage" href="title.xhtml">Title page</a></li><li><a epub:type="bodymatter" href="content.xhtml">Start reading</a></li></ol></nav>`);
@@ -4029,7 +4043,8 @@ function configuredWork(item,index) {
   if (typeof id!=='string' || !/^[a-zA-Z0-9._-]+$/.test(id)) throw new Error(`Work ${index+1} has an invalid id.`);
   if (item.sections!==undefined && (!Array.isArray(item.sections) || item.sections.some(s=>!s || typeof s.english!=='string' || typeof s.source!=='string' || !s.english || !s.source))) throw new Error(`Work ${index+1} has invalid section mappings.`);
   if (item.sourceLanguage!==undefined && !/^[a-z]{2,3}(?:-[A-Za-z0-9]+)*$/.test(item.sourceLanguage)) throw new Error(`Work ${index+1} has an invalid source language.`);
-  return {id,repository:item.repository,title:String(item.title || item.repository.split('/')[1].replace(/[-_]/g,' ')),originalTitle:String(item.originalTitle || ''),description:String(item.description || ''),sourceLanguage:item.sourceLanguage || 'bo',sectionMap:(item.sections || []).map(s=>({...s})),englishUrl:english.githubURL,sourceUrl:source.githubURL,branch:english.ref || '',owner:english.owner || '',english,source,directory:english.kind==='directory'?english.path:'',volumes:[],checkedAt:0,attemptedAt:0,error:'',sourceError:'',stale:null,pending:null};
+  if (item.restricted!==undefined && typeof item.restricted!=='boolean') throw new Error(`Work ${index+1} must give restricted as true or false.`);
+  return {id,repository:item.repository,title:String(item.title || item.repository.split('/')[1].replace(/[-_]/g,' ')),originalTitle:String(item.originalTitle || ''),description:String(item.description || ''),sourceLanguage:item.sourceLanguage || 'bo',restricted:item.restricted===true,sectionMap:(item.sections || []).map(s=>({...s})),englishUrl:english.githubURL,sourceUrl:source.githubURL,branch:english.ref || '',owner:english.owner || '',english,source,directory:english.kind==='directory'?english.path:'',volumes:[],checkedAt:0,attemptedAt:0,error:'',sourceError:'',stale:null,pending:null};
 }
 function create(onChange=()=>{},config) {
   let error='',works=[];
@@ -5082,7 +5097,10 @@ let catalogActive=false,catalogTimer=null;
 function catalogCard(work) {
   const li=document.createElement('li'),button=document.createElement('button');
   button.type='button';button.className='work-card published-card';button.dataset.work=work.id;
-  button.append(textElement('span','English · '+languageName(work.sourceLanguage || 'bo'),'work-card-kicker'));
+  const head=document.createElement('span'); head.className='work-card-head';
+  head.append(textElement('span','English · '+languageName(work.sourceLanguage || 'bo'),'work-card-kicker'));
+  if (work.restricted) { const mark=document.createElement('span'); mark.className='work-card-restricted'; mark.append(icon('lock'),document.createTextNode('Restricted')); head.append(mark); button.classList.add('restricted'); }
+  button.append(head);
   const original=textElement('span',work.originalTitle || '', 'work-card-original');original.lang=work.sourceLanguage || 'bo';button.append(original);
   button.append(textElement('span',work.title,'work-card-title'),textElement('span',work.description,'work-card-detail'));
   const extent=storageRead('extent:'+work.id), version=/v\d[\w.-]*$/i.exec(extent?.edition || '')?.[0];
@@ -5541,7 +5559,34 @@ async function prepareParallel(fragment,candidate,signal) {
     return {parallel,parallelFragment};
   } catch(error){if(signal?.aborted)throw error;candidate.sourceError=error.message;candidate.sourceErrorAt=error.line?{side:error.side,line:error.line}:null;candidate.sourceText='';delete candidate.sourceStructures;return unpaired();}
 }
+// A restricted work is opened only after the reader confirms their authorization. This is
+// an acknowledgement, not access control: the files stay wherever they are published.
+const confirmedRestricted=new Set();
+function isRestricted(entry) { return entry?.kind==='catalog' ? !!catalog.get(entry.catalogId)?.restricted : entry?.restricted===true; }
+function restrictedKey(entry) { return entry.kind==='catalog' ? 'catalog:'+entry.catalogId : entry.id; }
+function confirmRestricted(entry) {
+  if (!isRestricted(entry) || confirmedRestricted.has(restrictedKey(entry))) return Promise.resolve(true);
+  const dialog=$('restricted-dialog');
+  $('restricted-title').textContent=entry.kind==='catalog' ? catalog.get(entry.catalogId)?.title || entry.workTitle || 'This text' : entry.readingTitle || entry.workTitle || entry.title || 'This text';
+  return new Promise(resolve=>{
+    const finish=ok=>{
+      dialog.removeEventListener('cancel',cancel); $('restricted-yes').onclick=null; $('restricted-no').onclick=null;
+      if (dialog.open) dialog.close(); syncModalState();
+      if (ok) confirmedRestricted.add(restrictedKey(entry));
+      resolve(ok);
+    };
+    const cancel=event=>{ event.preventDefault(); finish(false); };
+    dialog.addEventListener('cancel',cancel);
+    $('restricted-yes').onclick=()=>finish(true); $('restricted-no').onclick=()=>finish(false);
+    openDialog('restricted-dialog'); $('restricted-no').focus();
+  });
+}
 async function loadDocument(descriptor, options = {}) {
+  if (!(await confirmRestricted(descriptor))) {
+    // Declining leaves the reader where they were; a declined link lands on the collection.
+    if (state.view!=='reading') { showCollection({updateURL:false,focus:false}); updateLocation(null,'',true,'collection'); }
+    return false;
+  }
   savePosition(true); state.controller?.abort();
   const controller = new AbortController(); state.controller = controller;
   const loadId = ++state.loadId; const requestedHash = options.section ?? ''; state.hasMoved = false;
@@ -5582,7 +5627,7 @@ async function loadDocument(descriptor, options = {}) {
       $('paired-status').append(' ',link);
     }
     setView('reading'); syncCitationSetting();
-    renderWorkIdentity(candidate, prepared.titleNode);
+    renderWorkIdentity(candidate, prepared.titleNode); $('restricted-mark').hidden=!isRestricted(candidate);
     const shortTitle = readingLabel(candidate);
     $('source-button').disabled = false; $('bookmark-button').disabled = candidate.kind === 'specimen';
     const countable = $('manuscript').cloneNode(true);
@@ -6558,7 +6603,7 @@ $('export-reader').addEventListener('click',()=>{
   if (!state.current) return;
   const payload={title:state.current.title,text:state.current.text,number:state.current.number || null,
     path:state.current.path || null,sourceURL:state.current.sourceURL || null,githubURL:state.current.githubURL || null,
-    originalKind:state.current.kind,readingTitle:readingLabel(state.current),workTitle:state.current.workTitle || '',chineseTitle:state.current.chineseTitle || '',originalTitle:state.current.originalTitle || '',sourceText:state.current.sourceText || '',sourceDescriptor:state.current.sourceDescriptor || null,sourceLanguage:state.current.sourceLanguage || 'bo',sectionMap:state.current.sectionMap || [],revision:state.current.revision || ''};
+    originalKind:state.current.kind,readingTitle:readingLabel(state.current),restricted:isRestricted(state.current),workTitle:state.current.workTitle || '',chineseTitle:state.current.chineseTitle || '',originalTitle:state.current.originalTitle || '',sourceText:state.current.sourceText || '',sourceDescriptor:state.current.sourceDescriptor || null,sourceLanguage:state.current.sourceLanguage || 'bo',sectionMap:state.current.sectionMap || [],revision:state.current.revision || ''};
   const escaped=JSON.stringify(payload).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026');
   const copy=appTemplate.replace(/(<script type="application\/json" id="embedded-manuscript">)[\s\S]*?(<\/script>)/,(_,open,close)=>open+escaped+close);
   // Named after the work, so a saved copy is recognisable among downloads.
@@ -6606,7 +6651,7 @@ $('epub-form').addEventListener('submit', async event => {
     root.querySelectorAll('.footnotes').forEach(el=>{el.hidden=el.classList.contains('source-footnotes')?!anySource:!anyEnglish;});
     const current = state.current;
     const options = {root, title: $('epub-book-title').value.trim(), author: $('epub-author').value.trim(),
-      language: $('epub-language').value.trim(), source: current.githubURL || current.sourceURL || '', specimen: current.kind === 'specimen'};
+      language: $('epub-language').value.trim(), source: current.githubURL || current.sourceURL || '', specimen: current.kind === 'specimen', restricted: isRestricted(current)};
     await new Promise(resolve => setTimeout(resolve, 30));
     const result = LukijaEPUB.build(options);
     let filename = result.title.normalize('NFKC').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-').replace(/^\.+|\.+$/g, '').trim().slice(0, 120) || 'manuscript';

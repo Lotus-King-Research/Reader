@@ -185,7 +185,7 @@ nav ol { padding-left: 1.3em; } nav li { margin: .6em 0; }
     const render = list => `<ol>${list.map(h => `<li><a href="content.xhtml#${escapeXML(h.id)}">${escapeXML(h.text)}</a>${h.children.length ? render(h.children) : ''}</li>`).join('')}</ol>`;
     return render(root);
   }
-  function build({root, title = 'Untitled text', author = '', language = 'en', source = '', identifier = '', date = new Date(), specimen = false}) {
+  function build({root, title = 'Untitled text', author = '', language = 'en', source = '', identifier = '', date = new Date(), specimen = false, restricted = false}) {
     if (!root || typeof root.cloneNode !== 'function') throw new TypeError('An already-sanitized manuscript DOM is required.');
     title = clean(title).trim().slice(0, 500) || 'Untitled text';
     author = clean(author).trim().slice(0, 500); language = validLanguage(language);
@@ -199,7 +199,8 @@ nav ol { padding-left: 1.3em; } nav li { margin: .6em 0; }
     const content = normalizedBody(root, language), headings = content.headings;
     const modified = date.toISOString().replace(/\.\d{3}Z$/, 'Z');
     const esc = escapeXML;
-    const notice = specimen ? '<p class="export-notice">Typography specimen only. This is not a translation of the source work.</p>' : '';
+    const notice = (specimen ? '<p class="export-notice">Typography specimen only. This is not a translation of the source work.</p>' : '')
+      + (restricted ? '<p class="export-notice">Restricted text. Read it only with the required authorization.</p>' : '');
     const images = content.imageCount ? `<p class="export-notice">${content.imageCount} image${content.imageCount === 1 ? ' is' : 's are'} represented by descriptive links. Linked images are not embedded and require an internet connection.</p>` : '';
     const titlepage = xhtml(title, language, `<section epub:type="titlepage" class="titlepage"><p class="edition">Reader · Reading edition</p><h1>${esc(title)}</h1>${author ? `<p>${esc(author)}</p>` : ''}${notice}${images}<p><a href="nav.xhtml">Contents</a></p>${source ? `<p class="export-notice"><a href="${esc(source)}">Manuscript source</a></p>` : ''}</section>`);
     const navigation = xhtml('Contents · ' + title, language, `<nav epub:type="toc" id="toc" role="doc-toc"><h1>Contents</h1>${headings.length ? navList(headings) : '<ol><li><a href="content.xhtml">' + esc(title) + '</a></li></ol>'}</nav><nav epub:type="landmarks" hidden="hidden"><h2>Guide</h2><ol><li><a epub:type="titlepage" href="title.xhtml">Title page</a></li><li><a epub:type="bodymatter" href="content.xhtml">Start reading</a></li></ol></nav>`);

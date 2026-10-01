@@ -764,7 +764,10 @@ let catalogActive=false,catalogTimer=null;
 function catalogCard(work) {
   const li=document.createElement('li'),button=document.createElement('button');
   button.type='button';button.className='work-card published-card';button.dataset.work=work.id;
-  button.append(textElement('span','English · '+languageName(work.sourceLanguage || 'bo'),'work-card-kicker'));
+  const head=document.createElement('span'); head.className='work-card-head';
+  head.append(textElement('span','English · '+languageName(work.sourceLanguage || 'bo'),'work-card-kicker'));
+  if (work.restricted) { const mark=document.createElement('span'); mark.className='work-card-restricted'; mark.append(icon('lock'),document.createTextNode('Restricted')); head.append(mark); button.classList.add('restricted'); }
+  button.append(head);
   const original=textElement('span',work.originalTitle || '', 'work-card-original');original.lang=work.sourceLanguage || 'bo';button.append(original);
   button.append(textElement('span',work.title,'work-card-title'),textElement('span',work.description,'work-card-detail'));
   const extent=storageRead('extent:'+work.id), version=/v\d[\w.-]*$/i.exec(extent?.edition || '')?.[0];
@@ -1223,7 +1226,34 @@ async function prepareParallel(fragment,candidate,signal) {
     return {parallel,parallelFragment};
   } catch(error){if(signal?.aborted)throw error;candidate.sourceError=error.message;candidate.sourceErrorAt=error.line?{side:error.side,line:error.line}:null;candidate.sourceText='';delete candidate.sourceStructures;return unpaired();}
 }
+// A restricted work is opened only after the reader confirms their authorization. This is
+// an acknowledgement, not access control: the files stay wherever they are published.
+const confirmedRestricted=new Set();
+function isRestricted(entry) { return entry?.kind==='catalog' ? !!catalog.get(entry.catalogId)?.restricted : entry?.restricted===true; }
+function restrictedKey(entry) { return entry.kind==='catalog' ? 'catalog:'+entry.catalogId : entry.id; }
+function confirmRestricted(entry) {
+  if (!isRestricted(entry) || confirmedRestricted.has(restrictedKey(entry))) return Promise.resolve(true);
+  const dialog=$('restricted-dialog');
+  $('restricted-title').textContent=entry.kind==='catalog' ? catalog.get(entry.catalogId)?.title || entry.workTitle || 'This text' : entry.readingTitle || entry.workTitle || entry.title || 'This text';
+  return new Promise(resolve=>{
+    const finish=ok=>{
+      dialog.removeEventListener('cancel',cancel); $('restricted-yes').onclick=null; $('restricted-no').onclick=null;
+      if (dialog.open) dialog.close(); syncModalState();
+      if (ok) confirmedRestricted.add(restrictedKey(entry));
+      resolve(ok);
+    };
+    const cancel=event=>{ event.preventDefault(); finish(false); };
+    dialog.addEventListener('cancel',cancel);
+    $('restricted-yes').onclick=()=>finish(true); $('restricted-no').onclick=()=>finish(false);
+    openDialog('restricted-dialog'); $('restricted-no').focus();
+  });
+}
 async function loadDocument(descriptor, options = {}) {
+  if (!(await confirmRestricted(descriptor))) {
+    // Declining leaves the reader where they were; a declined link lands on the collection.
+    if (state.view!=='reading') { showCollection({updateURL:false,focus:false}); updateLocation(null,'',true,'collection'); }
+    return false;
+  }
   savePosition(true); state.controller?.abort();
   const controller = new AbortController(); state.controller = controller;
   const loadId = ++state.loadId; const requestedHash = options.section ?? ''; state.hasMoved = false;
@@ -1264,7 +1294,7 @@ async function loadDocument(descriptor, options = {}) {
       $('paired-status').append(' ',link);
     }
     setView('reading'); syncCitationSetting();
-    renderWorkIdentity(candidate, prepared.titleNode);
+    renderWorkIdentity(candidate, prepared.titleNode); $('restricted-mark').hidden=!isRestricted(candidate);
     const shortTitle = readingLabel(candidate);
     $('source-button').disabled = false; $('bookmark-button').disabled = candidate.kind === 'specimen';
     const countable = $('manuscript').cloneNode(true);
@@ -2240,7 +2270,7 @@ $('export-reader').addEventListener('click',()=>{
   if (!state.current) return;
   const payload={title:state.current.title,text:state.current.text,number:state.current.number || null,
     path:state.current.path || null,sourceURL:state.current.sourceURL || null,githubURL:state.current.githubURL || null,
-    originalKind:state.current.kind,readingTitle:readingLabel(state.current),workTitle:state.current.workTitle || '',chineseTitle:state.current.chineseTitle || '',originalTitle:state.current.originalTitle || '',sourceText:state.current.sourceText || '',sourceDescriptor:state.current.sourceDescriptor || null,sourceLanguage:state.current.sourceLanguage || 'bo',sectionMap:state.current.sectionMap || [],revision:state.current.revision || ''};
+    originalKind:state.current.kind,readingTitle:readingLabel(state.current),restricted:isRestricted(state.current),workTitle:state.current.workTitle || '',chineseTitle:state.current.chineseTitle || '',originalTitle:state.current.originalTitle || '',sourceText:state.current.sourceText || '',sourceDescriptor:state.current.sourceDescriptor || null,sourceLanguage:state.current.sourceLanguage || 'bo',sectionMap:state.current.sectionMap || [],revision:state.current.revision || ''};
   const escaped=JSON.stringify(payload).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026');
   const copy=appTemplate.replace(/(<script type="application\/json" id="embedded-manuscript">)[\s\S]*?(<\/script>)/,(_,open,close)=>open+escaped+close);
   // Named after the work, so a saved copy is recognisable among downloads.
@@ -2288,7 +2318,7 @@ $('epub-form').addEventListener('submit', async event => {
     root.querySelectorAll('.footnotes').forEach(el=>{el.hidden=el.classList.contains('source-footnotes')?!anySource:!anyEnglish;});
     const current = state.current;
     const options = {root, title: $('epub-book-title').value.trim(), author: $('epub-author').value.trim(),
-      language: $('epub-language').value.trim(), source: current.githubURL || current.sourceURL || '', specimen: current.kind === 'specimen'};
+      language: $('epub-language').value.trim(), source: current.githubURL || current.sourceURL || '', specimen: current.kind === 'specimen', restricted: isRestricted(current)};
     await new Promise(resolve => setTimeout(resolve, 30));
     const result = LukijaEPUB.build(options);
     let filename = result.title.normalize('NFKC').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-').replace(/^\.+|\.+$/g, '').trim().slice(0, 120) || 'manuscript';
