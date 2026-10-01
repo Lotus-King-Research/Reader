@@ -179,7 +179,7 @@ function build(english,source,{language='bo',sectionMap=[],anchorAlignment=false
     const before=holder.previousSibling;if(before?.nodeType===3 && /\S\s+$/.test(before.data))before.data=before.data.replace(/\s+$/,'');
   }
   function setNotesVisible(visible){
-    notesVisible=Boolean(visible);for(const holder of referenceHolders)holder.hidden=!notesVisible;
+    notesVisible=Boolean(visible);for(const holder of referenceHolders)holder.classList.toggle('note-off',!notesVisible);
     syncNotes();return notesVisible;
   }
   const sectionIndex=new Map(sections.map((section,index)=>[section,index]));

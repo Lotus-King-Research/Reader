@@ -302,5 +302,6 @@ test('the title shows the edition, the verified revisions and the extent', async
   await expect(line).toContainText('5 passages');
   await expect(line).toContainText(/Verified · [0-9a-f]{7} · [0-9a-f]{7}/);
   await page.goto('/');
-  await expect(page.locator('[data-work="structured-text"] .work-card-extent')).toHaveText('5 passages · Edition v2');
+  // Without an edge, the card keeps the word count made when the text was read.
+  await expect(page.locator('[data-work="structured-text"] .work-card-words')).toHaveText(/^\d+ words$/);
 });

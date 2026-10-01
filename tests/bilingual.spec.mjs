@@ -220,7 +220,9 @@ test('a local unpaired manuscript remains unchanged', async ({page}) => {
   await expect(page.locator('#manuscript')).toContainText('Original local words.');
   await expect(page.locator('#manuscript .parallel-section, #manuscript .source-passage')).toHaveCount(0);
   await sourceDialog(page);
-  await expect(page.locator('#source-textarea')).toHaveValue(local);
+  const download = page.waitForEvent('download'); await page.locator('#download-markdown').click();
+  const chunks = []; for await (const chunk of await (await download).createReadStream()) chunks.push(chunk);
+  expect(Buffer.concat(chunks).toString()).toBe(local);
 });
 
 test('the offline reading copy retains both languages and switches without GitHub', async ({page,context}, info) => {

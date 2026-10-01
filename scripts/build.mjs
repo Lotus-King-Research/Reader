@@ -1,8 +1,10 @@
 import {readFile, writeFile} from 'node:fs/promises';
 const root=new URL('../',import.meta.url), path=new URL('public/index.html',root);
 let html=await readFile(path,'utf8');
-for (const [name,source,id] of [['epub','src/epub.js'],['catalog','src/catalog.js'],['parallel','src/parallel.js'],['app','src/app.js','reader-code']]) {
-  const engine=await readFile(new URL(source,root),'utf8');
+for (const [name,source,id] of [['epub','src/epub.js'],['catalog','src/catalog.js'],['parallel','src/parallel.js'],['words','src/words.js'],['app','src/app.js','reader-code']]) {
+  let engine=await readFile(new URL(source,root),'utf8');
+  // The word counter is a module shared with the Worker; in the page it becomes ReaderWords.
+  if (name==='words') engine='(() => {\n'+engine.replace(/^export /gm,'')+'\nwindow.ReaderWords = {countWords};\n})();';
   if (/<\/script/i.test(engine)) throw new Error(`Invalid embedded ${name} source.`);
   const slot=new RegExp(`(<script id="${id || name+'-engine'}">)[\\s\\S]*?(<\\/script>)`);
   if (!slot.test(html)) throw new Error(`Missing ${name} slot in public/index.html.`);

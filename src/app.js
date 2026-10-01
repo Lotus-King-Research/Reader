@@ -606,7 +606,7 @@ function rebuildCitationLayers() {
   prepareContent(fragment,state.current.metadata || {},state.current);
   if (state.parallelFragment) state.parallel=pairSections(fragment,state.parallelFragment.cloneNode(true),state.current);
   state.parallel?.pairs.forEach(pair=>{if(sourceSections.has(pair.section.id))pair.show(true,false,true);});
-  markApparatus(fragment);$('manuscript').replaceChildren(fragment);state.renderedCitations=state.settings.citations;
+  markApparatus(fragment);markNoteTails(fragment);markNotesHeading(fragment);$('manuscript').replaceChildren(fragment);state.renderedCitations=state.settings.citations;
   buildOutline();buildSearchIndex();restorePosition(position);
   announce(state.settings.citations ? 'Attributed quotations are separated from the main text.' : 'Automatic citation formatting is off. Authored blockquotes are retained.');
 }
@@ -642,6 +642,57 @@ function typographicApostrophes(root) {
 const APPARATUS_HEADING=/^\[(Source heading|Source annotation):\s*([\s\S]+?)\]$/;
 function navLabel(text) { const match=APPARATUS_HEADING.exec(String(text).trim()); return match ? match[2].replace(/\.$/,'') : text; }
 function bracketPart(text) { const span=textElement('span',text,'ap-br'); span.setAttribute('aria-hidden','true'); return span; }
+// Turning notes on must not move a word. A run of note markers that ends its line (the end
+// of a block or of a verse line) sits in a zero-width overlay, so it never takes room;
+// a marker inside a line keeps its room always and only becomes visible.
+function noteHolder(el) { return el.closest('sup') || el; }
+function markNoteTails(root) {
+  const holders=[...new Set([...root.querySelectorAll('.reader-note-marker,a.footnote-ref,a.legacy-note-ref')].map(el=>el.closest('.reader-note-marker') || noteHolder(el)))];
+  const done=new Set();
+  for (const holder of holders) {
+    if (done.has(holder) || holder.closest('.footnotes,.note-tail')) continue;
+    // The run of markers this one belongs to, and whether anything follows it on its line.
+    const run=[holder]; let node=holder.nextSibling, ends=true;
+    for (; node; node=node.nextSibling) {
+      if (node.nodeType===3 && !node.textContent.trim()) continue;
+      if (node.nodeType===1 && holders.includes(node)) { run.push(node); continue; }
+      ends=node.nodeType===1 && node.tagName==='BR'; break;
+    }
+    if (!node) { let parent=holder.parentElement; ends=true;
+      // Inline wrappers (emphasis, links) end the line only if nothing follows them either.
+      while (parent && !/^(P|LI|H[1-6]|DD|DT|TD|TH|BLOCKQUOTE|DIV|SECTION|FIGCAPTION)$/.test(parent.tagName)) {
+        let next=parent.nextSibling; while (next && next.nodeType===3 && !next.textContent.trim()) next=next.nextSibling;
+        if (next && !(next.nodeType===1 && next.tagName==='BR')) { ends=false; break; }
+        if (next) break; parent=parent.parentElement;
+      }
+    }
+    run.forEach(item=>done.add(item));
+    if (!ends) continue;
+    const tail=document.createElement('span'); tail.className='note-tail'; tail.setAttribute('data-reader-ui','');
+    holder.before(tail); run.forEach((item,index)=>{ if (index) tail.append(' '); tail.append(item); });
+  }
+}
+// A run of end-of-line markers sits in the margin only where the margin holds it; where it
+// does not (a phone, a long run), the run keeps its room in the line instead. This is decided
+// when the layout changes anyway, never when notes are shown, so showing them moves nothing.
+function fitNoteTails({reset=false}={}) {
+  const main=$('manuscript'); if (state.view!=='reading' || !main || main.hidden) return;
+  if (reset) main.querySelectorAll('.note-tail-inline').forEach(tail=>tail.classList.remove('note-tail-inline'));
+  const area=$('main-content').getBoundingClientRect(), limit=Math.min(area.right,document.documentElement.clientWidth)-4;
+  for (let pass=0; pass<3; pass++) {
+    // Measure every rendered tail in one layout, then change them together.
+    const over=[...main.querySelectorAll('.note-tail:not(.note-tail-inline)')].filter(tail=>{ const box=tail.getClientRects()[0]; return box && box.left+tail.scrollWidth>limit; });
+    if (!over.length) break;
+    over.forEach(tail=>tail.classList.add('note-tail-inline'));
+  }
+}
+// A heading with nothing after it but the notes (such as "Translation notes") belongs to
+// the notes: it is shown and listed in the contents only while notes are shown.
+function markNotesHeading(root) {
+  // Children, not :scope: a document fragment has no element for :scope to match.
+  const children=[...root.children], blocks=children.filter(el=>!el.matches('.footnotes')), last=blocks.at(-1);
+  if (last && /^H[1-6]$/.test(last.tagName) && children.some(el=>el.matches('.footnotes'))) last.setAttribute('data-notes-heading','');
+}
 function markApparatus(root) {
   for (const heading of root.querySelectorAll('h1,h2,h3,h4')) {
     if (heading.closest('.source-passage') || heading.querySelector('.apparatus-label')) continue;
@@ -769,9 +820,9 @@ function catalogCard(work) {
   if (work.restricted) { const mark=document.createElement('span'); mark.className='work-card-restricted'; mark.append(icon('lock'),document.createTextNode('Restricted')); head.append(mark); button.classList.add('restricted'); }
   button.append(head);
   const original=textElement('span',work.originalTitle || '', 'work-card-original');original.lang=work.sourceLanguage || 'bo';button.append(original);
-  button.append(textElement('span',work.title,'work-card-title'),textElement('span',work.description,'work-card-detail'));
-  const extent=storageRead('extent:'+work.id), version=/v\d[\w.-]*$/i.exec(extent?.edition || '')?.[0];
-  if (extent?.passages>1) button.append(textElement('span',[extent.passages.toLocaleString('en')+' passages',version ? 'Edition '+version : ''].filter(Boolean).join(' · '),'work-card-extent'));
+  // How long the translation is, in words; nothing until it is known.
+  const words=workWords(work);
+  button.append(textElement('span',work.title,'work-card-title'),textElement('span',words ? formatWords(words) : '','work-card-words'));
   // Where the reader stopped (position and section label only; never text).
   const last=storageRead('last:'+work.id), known=last && (work.english.kind==='file' || !work.volumes.length || work.volumes.some(file=>file.path===last.path));
   const continuing=known && last.progress>.025, finished=continuing && last.progress>=.985;
@@ -791,6 +842,26 @@ function catalogCard(work) {
     select.addEventListener('change',()=>openEntry(catalog.descriptor(work.id,select.value)));label.append(select);li.append(label);
   }
   return li;
+}
+function formatWords(count) { return `${count.toLocaleString('en')} word${count===1?'':'s'}`; }
+function workWords(work) { return work.words ?? storageRead('words:'+work.id)?.words ?? storageRead('extent:'+work.id)?.words ?? null; }
+// Each card asks the edge once a visit; the answer is kept for the next visit's first paint.
+const wordsAsked=new Set();
+// Only while the collection is on screen and nothing is loading (a link straight to a text
+// passes through the collection first), and one at a time, so a host without the edge is
+// noticed after a single request.
+let wordsTimer=0;
+function fillWordCounts() { clearTimeout(wordsTimer); wordsTimer=setTimeout(askWordCounts,300); }
+async function askWordCounts() {
+  for (const work of catalog.works) {
+    if (state.view!=='collection' || state.busy) return;
+    if (wordsAsked.has(work.id)) continue;
+    wordsAsked.add(work.id);
+    const count=await catalog.wordCount(work.id);
+    if (!Number.isSafeInteger(count)) { if (catalog.edge==='off') return; continue; }
+    work.words=count; storageWrite('words:'+work.id,{words:count});
+    const label=document.querySelector(`[data-work="${CSS.escape(work.id)}"] .work-card-words`); if (label) label.textContent=formatWords(count);
+  }
 }
 function filterCollection() {
   const query=$('collection-search').value.trim().toLocaleLowerCase();let visible=0;
@@ -962,6 +1033,7 @@ function renderWorkIdentity(entry, titleNode = null) {
 }
 function setView(view) {
   state.view=view;document.body.dataset.view=view;const reading=view==='reading';$('welcome').hidden=reading;
+  if (!reading) fillWordCounts();
   if(!reading){$('revision-notice').hidden=true;$('stale-badge').hidden=true;}
   $('paired-status').hidden=!reading || !state.current?.sourceError;
   ['book-header','manuscript','manuscript-end'].forEach(id=>$(id).hidden=!reading);
@@ -988,7 +1060,7 @@ function showCollection(options = {}) {
 }
 function returnToReading(options = {}) {
   if(state.busy){state.controller?.abort();++state.loadId;setBusy(false);}
-  if (!state.current) { showLibrary(); return; }
+  if (!state.current) { if (LOCAL_TEXTS) showLibrary(); else showCollection(); return; }
   if (state.view === 'reading') { closeNav(false); return; }
   closeNav(false); setView('reading'); syncCitationSetting(); state.headings = state.readingHeadings; renderOutline();
   $('toolbar-room').textContent = 'Reader';
@@ -1034,6 +1106,7 @@ function renderCollection() {
   $('published-count').textContent = `${catalog.works.length + published.length} ${catalog.works.length + published.length===1?'work':'works'}`;
   $('refresh-catalog').disabled = catalog.works.some(w=>w.pending);
   $('continue-reading').hidden = !state.current; $('continue-title').textContent = state.current ? readingLabel(state.current) : '';
+  if (state.view === 'collection') fillWordCounts();
 }
 ['collection-link','next-volume'].forEach(id => $(id).addEventListener('click', () => showCollection()));
 $('home-link').addEventListener('click', event => { event.preventDefault(); showCollection(); });
@@ -1059,8 +1132,12 @@ function renderLibrary() {
     }); li.append(button); $('library-list').append(li);
   }
 }
-function showLibrary() { renderLibrary(); $('library-error').hidden = true; openDialog('library-dialog'); }
+// A collection can turn off opening one's own files: the entry points go, offline copies stay.
+const LOCAL_TEXTS = catalog.localTexts;
+function showLibrary() { if (!LOCAL_TEXTS) return; renderLibrary(); $('library-error').hidden = true; openDialog('library-dialog'); }
 $('open-welcome').addEventListener('click',showLibrary);
+$('open-welcome').hidden = !LOCAL_TEXTS;
+document.querySelectorAll('[data-local-texts]').forEach(el => { el.hidden = !LOCAL_TEXTS; });
 
 async function fetchText(url,parentSignal,onProgress) {
   const controller = new AbortController();
@@ -1132,7 +1209,16 @@ function syncNotesToggle() {
   const button=$('notes-toggle');button.hidden=state.view!=='reading' || !$('manuscript').querySelector('.footnote-ref,.legacy-note-ref,.footnotes');
   button.setAttribute('aria-pressed',String(!!state.settings.notes));button.setAttribute('aria-label',state.settings.notes?'Hide endnotes':'Show endnotes');button.title=state.settings.notes?'Hide endnote links':'Show endnote links';
   document.body.dataset.notes=state.settings.notes?'visible':'hidden';
+  // With notes hidden, the end of the text says they are there and how to show them.
+  const notes=state.view==='reading' && $('manuscript').querySelector(':scope > .footnotes'), heading=$('manuscript').querySelector('[data-notes-heading]');
+  $('notes-invite').hidden=!notes || state.settings.notes;
+  $('notes-invite-text').textContent=`${heading ? navLabel(heading.dataset.headingText || heading.textContent.replace(/§$/,'').trim()) : 'Notes'} are hidden.`;
 }
+$('notes-invite-button').addEventListener('click',()=>{
+  setNotesVisible(true);
+  const target=$('manuscript').querySelector('[data-notes-heading]') || $('manuscript').querySelector(':scope > .footnotes:not([hidden])');
+  if (target) target.scrollIntoView({block:'start',behavior:reduceMotion.matches ? 'instant' : 'smooth'});
+});
 function setNotesVisible(visible,persist=true) {
   const changed=state.settings.notes!==!!visible;state.settings.notes=!!visible;state.parallel?.setNotesVisible(!!visible);syncNotesToggle();
   if(persist)storageWrite('settings',state.settings);
@@ -1188,7 +1274,7 @@ function syncSourceHint() {
 function dismissSourceHint() { if (!storageRead('hint:source')) storageWrite('hint:source',1); $('source-hint').hidden=true; }
 $('source-hint-dismiss').addEventListener('click',()=>{ dismissSourceHint(); $('manuscript').focus?.({preventScroll:true}); });
 function pairSections(fragment,original,candidate) {
-  const parallel=ReaderParallel.build(fragment,original,{language:candidate.sourceLanguage || 'bo',sectionMap:candidate.sectionMap || [],anchorAlignment:isPairedSchema(candidate.metadata?.schema),structures:candidate.sourceStructures || [],onToggle:()=>{updateProgress();rememberSwitches();}});
+  const parallel=ReaderParallel.build(fragment,original,{language:candidate.sourceLanguage || 'bo',sectionMap:candidate.sectionMap || [],anchorAlignment:isPairedSchema(candidate.metadata?.schema),structures:candidate.sourceStructures || [],onToggle:()=>{fitNoteTails();updateProgress();rememberSwitches();}});
   parallel.setNotesVisible(state.settings.notes);return parallel;
 }
 async function prepareParallel(fragment,candidate,signal) {
@@ -1279,7 +1365,7 @@ async function loadDocument(descriptor, options = {}) {
     loadingProgress(85,'Preparing Tibetan passages…');await new Promise(resolve=>requestAnimationFrame(resolve));
     if(loadId!==state.loadId || controller.signal.aborted)return false;
     const paired=await prepareParallel(fragment,candidate,controller.signal);
-    markApparatus(fragment);
+    markApparatus(fragment); markNoteTails(fragment); markNotesHeading(fragment);
     if(loadId!==state.loadId || controller.signal.aborted)return false;
     loadingProgress(94,'Finishing the reading page…');await new Promise(resolve=>requestAnimationFrame(resolve));
     if(loadId!==state.loadId || controller.signal.aborted)return false;
@@ -1305,7 +1391,7 @@ async function loadDocument(descriptor, options = {}) {
     state.minutes = Math.max(1,Math.ceil(latinWords/200 + hanChars/350));
     syncProvenance();
     // Counts only (never text), so the collection can show each work's extent.
-    if (candidate.kind==='catalog') storageWrite('extent:'+candidate.catalogId,{passages:state.parallel?.total || 0,edition:workIdentity(candidate).edition || ''});
+    if (candidate.kind==='catalog') storageWrite('extent:'+candidate.catalogId,{passages:state.parallel?.total || 0,edition:workIdentity(candidate).edition || '',words:ReaderWords.countWords(candidate.text)});
 
     $('end-caption').textContent=candidate.kind === 'specimen' ? 'End of the typography specimen. Open your own text to read.' : `End of ${shortTitle}.`;
     document.title=shortTitle+' · '+CONFIG.title;
@@ -1340,7 +1426,7 @@ async function loadDocument(descriptor, options = {}) {
       });
       else if (absent) notify(absent+'The text opens at the beginning.','',null,9000);
     }
-    syncSwitchedControl(); syncSourceHint();
+    syncSwitchedControl(); syncSourceHint(); fitNoteTails();
     announce(`${shortTitle} opened. ${state.headings.length} sections.${restoredSwitches ? ` ${restoredSwitches} passage${restoredSwitches===1?'':'s'} in ${sourceLanguageLabel()}, as you left ${restoredSwitches===1?'it':'them'}.` : ''}`);
     return true;
   } catch(error) {
@@ -1348,7 +1434,7 @@ async function loadDocument(descriptor, options = {}) {
     setBusy(false);
     const detail = error instanceof TypeError ? 'The text could not be reached from this browser. This may be a network, privacy, or cross-origin restriction.' : error.message;
     // Published texts come through Reader's own cache, so a retry is the useful advice.
-    showError(`${detail} ${descriptor.kind==='catalog' ? 'Try again in a moment.' : 'You can also open a downloaded Markdown file.'}`,true);
+    showError(`${detail} ${descriptor.kind==='catalog' || !LOCAL_TEXTS ? 'Try again in a moment.' : 'You can also open a downloaded Markdown file.'}`,true);
     $('source-status').textContent=state.current ? 'Previous text kept' : 'Source unavailable';
     announce('The text could not be loaded.');
     state.retryDescriptor=descriptor;
@@ -1462,17 +1548,17 @@ $('paste-button').addEventListener('click',async()=>{
   closeDialog('library-dialog'); await loadDocument(descriptor);
 });
 let dragDepth=0;
-window.addEventListener('dragenter',e=>{ if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); dragDepth++; $('drop-overlay').hidden=false; } });
-window.addEventListener('dragover',e=>{ if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect='copy'; } });
+window.addEventListener('dragenter',e=>{ if (LOCAL_TEXTS && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); dragDepth++; $('drop-overlay').hidden=false; } });
+window.addEventListener('dragover',e=>{ if (LOCAL_TEXTS && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect='copy'; } });
 window.addEventListener('dragleave',e=>{ if ([...e.dataTransfer.types].includes('Files')) { dragDepth=Math.max(0,dragDepth-1); if (!dragDepth) $('drop-overlay').hidden=true; } });
-window.addEventListener('drop',e=>{ e.preventDefault(); dragDepth=0; $('drop-overlay').hidden=true; if (e.dataTransfer.files.length) importFiles(e.dataTransfer.files); });
+window.addEventListener('drop',e=>{ e.preventDefault(); dragDepth=0; $('drop-overlay').hidden=true; if (LOCAL_TEXTS && e.dataTransfer.files.length) importFiles(e.dataTransfer.files); });
 window.addEventListener('blur',()=>{ dragDepth=0; $('drop-overlay').hidden=true; });
 
 
 function buildOutline() {
   $('manuscript').querySelectorAll('.section-link').forEach(link=>link.remove());
   state.headings=[]; let section=0;
-  const els=[...$('manuscript').querySelectorAll('h1,h2,h3')].filter(el=>!el.closest('.source-passage,.source-footnotes') && (!el.closest('.footnotes') || state.settings.notes));
+  const els=[...$('manuscript').querySelectorAll('h1,h2,h3')].filter(el=>!el.closest('.source-passage,.source-footnotes') && (!el.closest('.footnotes') && !el.hasAttribute('data-notes-heading') || state.settings.notes));
   for (const heading of els) {
     const level=heading.closest('.parallel-section[data-format="h1"]') ? 3 : Number(heading.tagName[1]); if (level<=2) section++;
     const text=navLabel(heading.dataset.headingText || heading.textContent);
@@ -1622,7 +1708,7 @@ window.addEventListener('popstate', event => {
     let descriptor = itemId ? state.library.find(e => e.id === itemId) : null;
     if (!descriptor && itemId === state.current?.id) descriptor = state.current;
     if (!descriptor && params.get('work')) descriptor = collectionDescriptor(params.get('work'),params.get('file'));
-    if (!descriptor && params.get('src')) descriptor = fromURL(params.get('src'));
+    if (!descriptor && params.get('src') && LOCAL_TEXTS) descriptor = fromURL(params.get('src'));
     if (!descriptor && params.get('demo') === '1') descriptor = specimenDescriptor();
     if (!descriptor && params.get('file')) descriptor = fromProject(params.get('file'));
     if (!descriptor) { showCollection({updateURL:false}); return; }
@@ -1730,10 +1816,10 @@ let readingWidth=0;
 new ResizeObserver(entries=>{
   // Only a change of width reflows the text; height changes come from the text itself.
   const width=Math.round(entries[entries.length-1].contentRect.width);
-  if (width!==readingWidth) { const first=!readingWidth; readingWidth=width; if (!first) pinPlace(); }
+  if (width!==readingWidth) { const first=!readingWidth; readingWidth=width; if (!first) { fitNoteTails({reset:true}); pinPlace(); } }
   requestAnimationFrame(updateProgress);
 }).observe($('main-content'));
-document.fonts?.addEventListener?.('loadingdone',()=>pinPlace({ifUnmoved:true}));
+document.fonts?.addEventListener?.('loadingdone',()=>{ fitNoteTails({reset:true}); pinPlace({ifUnmoved:true}); });
 window.addEventListener('pagehide',()=>savePosition(true));
 document.addEventListener('visibilitychange',()=>{ if (document.hidden) savePosition(true); });
 function updateBookmarkUI() {
@@ -1795,7 +1881,7 @@ function buildSearchIndex() {
   $('search-input').value=''; renderSearch();
 }
 function showSearch() {
-  if (state.view !== 'reading' || !state.current) return notify('Open a text to search it.','Open library',showLibrary);
+  if (state.view !== 'reading' || !state.current) return LOCAL_TEXTS ? notify('Open a text to search it.','Open library',showLibrary) : notify('Open a text from the collection to search it.');
   openDialog('search-dialog'); $('search-input').focus(); $('search-input').select(); renderSearch();
 }
 $('search-trigger').addEventListener('click',showSearch);
@@ -1889,7 +1975,7 @@ function applySettings(persist=true) {
   $('auto-citations').checked=settings.citations;setNotesVisible(settings.notes,false);
   settings.shortcuts=settings.shortcuts!==false; $('single-key-shortcuts').checked=settings.shortcuts;
   if (persist) storageWrite('settings',settings);
-  rebuildCitationLayers(); pinPlace();
+  rebuildCitationLayers(); fitNoteTails({reset:true}); pinPlace();
 }
 $('settings-trigger').addEventListener('click',()=>{ if ($('settings-dialog').open) closeSettings(); else openDialog('settings-dialog'); });
 function closeSettings() { if (!$('settings-dialog').open) return; closeDialog('settings-dialog'); $('settings-trigger').focus({preventScroll:true}); }
@@ -1923,7 +2009,7 @@ function handleManuscriptClick(e) {
     let name=path.split('/').pop(); try { name=decodeURIComponent(name); } catch (_) {}
     const target=state.library.find(item=>item.filename===name);
     if (target) loadDocument(target,{section:section ? '#'+section:''});
-    else notify('Open '+name+' in the library first. Local folders are not read automatically.','Open files',openFilePicker);
+    else if (LOCAL_TEXTS) notify('Open '+name+' in the library first. Local folders are not read automatically.','Open files',openFilePicker);
     return;
   }
   if (a.dataset.footnote) {
@@ -2083,7 +2169,7 @@ $('selection-language').addEventListener('click',()=>{
   const returnOffset=!selectionLanguage?first?.englishScrollOffset:undefined;
   closeSelectionMenu();window.getSelection()?.removeAllRanges();
   // Each non-silent switch forces a whole-book layout; switch silently and measure once.
-  pairs.forEach(pair=>pair.show(selectionLanguage,false,true)); updateProgress(); rememberSwitches();
+  pairs.forEach(pair=>pair.show(selectionLanguage,false,true)); fitNoteTails(); updateProgress(); rememberSwitches();
   if(returnOffset!==undefined){window.scrollTo({top:scrollY+first.section.getBoundingClientRect().top+returnOffset,behavior:'instant'});delete first.englishScrollOffset;}
   else if(first && first.section.getBoundingClientRect().bottom<$('toolbar-volume').getBoundingClientRect().bottom+30)first.section.scrollIntoView({block:'start',behavior:'instant'});
   announce((selectionLanguage?sourceLanguageLabel():'English')+' shown for the selected passage'+(pairs.length===1?'': 's')+'.');
@@ -2242,10 +2328,8 @@ async function showEditorialNote(href) {
 
 function showSource() {
   if (!state.current) {
-    $('source-textarea').value='No text is open yet.';
-    $('source-description').textContent='Open a text to view its original Markdown and export a reading copy.';
+    $('source-description').textContent='Open a text to save or print a reading copy.';
   } else {
-    $('source-textarea').value=state.current.text;
     $('source-description').textContent=state.current.kind==='specimen' ? 'Typography specimen only. This is not a source text or translation.' : state.current.filename || state.current.path || state.current.title;
   }
   if (state.current?.revision) $('source-description').textContent += ' · File revision '+state.current.revision;
@@ -2313,7 +2397,8 @@ $('epub-form').addEventListener('submit', async event => {
     const title = $('title-content').querySelector('h1');
     if (title) root.append(inert.importNode(title, true));
     root.append(...inert.importNode($('manuscript'), true).childNodes);
-    root.querySelectorAll('.footnote-ref,.legacy-note-ref').forEach(el=>{el.hidden=false;el.closest('sup')?.removeAttribute('hidden');});
+    root.querySelectorAll('.footnote-ref,.legacy-note-ref').forEach(el=>{el.hidden=false;el.closest('sup')?.removeAttribute('hidden');el.closest('.reader-note-marker')?.classList.remove('note-off');});
+    root.querySelectorAll('.note-tail').forEach(tail=>tail.replaceWith(...tail.childNodes));
     const anySource=state.parallel?.pairs.some(pair=>pair.sourceVisible),anyEnglish=!state.parallel?.pairs.length || state.parallel.pairs.some(pair=>!pair.sourceVisible);
     root.querySelectorAll('.footnotes').forEach(el=>{el.hidden=el.classList.contains('source-footnotes')?!anySource:!anyEnglish;});
     const current = state.current;
@@ -2380,7 +2465,7 @@ document.addEventListener('keydown',e=>{
   else if (e.key.toLowerCase()==='t') {e.preventDefault();toggleActivePassage();}
   else if (e.key.toLowerCase()==='f') {e.preventDefault();toggleFocus();}
   else if (e.key.toLowerCase()==='b') {e.preventDefault();bookmarkPosition();}
-  else if (e.key.toLowerCase()==='l') {e.preventDefault();showLibrary();}
+  else if (e.key.toLowerCase()==='l' && LOCAL_TEXTS) {e.preventDefault();showLibrary();}
 });
 
 async function start() {
@@ -2402,8 +2487,10 @@ async function start() {
     }
     startCatalog();
     if (params.has('work')) {await loadDocument(collectionDescriptor(params.get('work'),params.get('file')),{updateURL:false,section:location.hash}); return;}
-    if ((!CONFIG.autoLoad || !CONFIG.initialFile) && !params.has('src') && !params.has('file')) { updateLocation(null,'',true,'collection'); return; }
-    const descriptor=params.get('src') ? fromURL(params.get('src')) : fromProject(params.get('file') || CONFIG.initialFile);
+    // A link to someone else's file opens only where opening one's own files is allowed.
+    const src=LOCAL_TEXTS ? params.get('src') : null;
+    if ((!CONFIG.autoLoad || !CONFIG.initialFile) && !src && !params.has('file')) { updateLocation(null,'',true,'collection'); return; }
+    const descriptor=src ? fromURL(src) : fromProject(params.get('file') || CONFIG.initialFile);
     await loadDocument(descriptor,{updateURL:false,section:location.hash});
     // Discover only on hosted sites; local files do not generate additional requests.
     if (/^https?:$/.test(location.protocol) && state.current?.kind==='repository') discoverVolumes();

@@ -58,9 +58,11 @@ function configuredWork(item,index) {
   return {id,repository:item.repository,title:String(item.title || item.repository.split('/')[1].replace(/[-_]/g,' ')),originalTitle:String(item.originalTitle || ''),description:String(item.description || ''),sourceLanguage:item.sourceLanguage || 'bo',restricted:item.restricted===true,sectionMap:(item.sections || []).map(s=>({...s})),englishUrl:english.githubURL,sourceUrl:source.githubURL,branch:english.ref || '',owner:english.owner || '',english,source,directory:english.kind==='directory'?english.path:'',volumes:[],checkedAt:0,attemptedAt:0,error:'',sourceError:'',stale:null,pending:null};
 }
 function create(onChange=()=>{},config) {
-  let error='',works=[];
+  let error='',works=[],localTexts=true;
   try {
     config=config===undefined?embeddedConfig():config;
+    // Opening one's own files is on unless a collection turns it off.
+    localTexts=config?.localTexts!==false;
     if (!config || !Array.isArray(config.works)) throw new Error('Reader configuration must contain a works array.');
     const errors=[];
     config.works.forEach((item,index)=>{try {const work=configuredWork(item,index);if(works.some(w=>w.id===work.id)) throw new Error(`Duplicate work id: ${work.id}.`);works.push(work);}catch(e){errors.push(e.message);}});
@@ -171,6 +173,20 @@ function create(onChange=()=>{},config) {
     const entry=validateFile({path:endpoint.path,sha:await blobSHA(bytes),size:bytes.length});
     rememberInline(entry.sha,bytes);
     return [{...entry,via:'raw',stale:'unverified',savedAt:null}];
+  }
+  // The English text's word count, from the edge (never from the text itself, which a
+  // restricted work must not send before the reader confirms).
+  async function wordCount(id) {
+    const work=get(id);
+    if(!work || work.english.kind!=='file' || !work.english.github || edge==='off')return null;
+    try {
+      const {response,bytes}=await request(edgeURL('words',work.english),{headers:{Accept:'application/json'},limit:65536});
+      if(response.headers.get('x-reader-edge')!=='1'){edge='off';return null;}
+      edge='on';const body=json(bytes);return Number.isSafeInteger(body.words) ? body.words : null;
+    } catch(error) {
+      if(error.notEdge || (!error.edge && [404,405,501].includes(error.status)))edge='off';
+      return null;
+    }
   }
   async function list(endpoint,cache,onProgress,bodies=false) {
     if(!endpoint.github)return [{path:endpoint.path,name:endpoint.path,sha:'',size:0}];
@@ -334,7 +350,7 @@ function create(onChange=()=>{},config) {
     }
     return null;
   }
-  return {works,get,descriptor,refresh,refreshAll,read,identify,error,interval:INTERVAL,get edge(){return edge;}};
+  return {works,get,descriptor,refresh,refreshAll,read,identify,wordCount,error,localTexts,interval:INTERVAL,get edge(){return edge;}};
 }
 window.ReaderCatalog=Object.freeze({create});
 window.LukijaCatalog=window.ReaderCatalog;

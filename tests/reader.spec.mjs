@@ -64,7 +64,10 @@ test('root text, quoted voices and ordinary terms remain distinct', async ({page
   await expect(page.locator('#manuscript .citation-block')).not.toContainText(['quoted term','quoted term']);
 });
 test('original source is byte-for-byte unchanged', async ({page}) => {
-  await load(page); await source(page); await expect(page.locator('#source-textarea')).toHaveValue(sample);
+  await load(page); await source(page);
+  const download = page.waitForEvent('download'); await page.locator('#download-markdown').click();
+  const chunks = []; for await (const chunk of await (await download).createReadStream()) chunks.push(chunk);
+  expect(Buffer.concat(chunks).toString()).toBe(sample);
 });
 test('EPUB is a complete package with well-formed XML', async ({page},info) => {
   await load(page); await epubDialog(page); const {files}=await epubDownload(page,info);

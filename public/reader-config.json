@@ -1,4 +1,5 @@
 {
+  "localTexts": false,
   "works": [
     {
       "id": "dra-thal-gyur",
@@ -8,7 +9,8 @@
       "description": "Paired Tibetan source and English translation.",
       "englishUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Dra-Thal-Gyur/main/paired/translation.md",
       "sourceUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Dra-Thal-Gyur/main/paired/source.md",
-      "sourceLanguage": "bo"
+      "sourceLanguage": "bo",
+      "restricted": true
     },
     {
       "id": "togden-gongchig-drelwa",
@@ -36,6 +38,17 @@
       "englishUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Togden-Nangpa-Sangyepa/main/paired/translation.md",
       "sourceUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Togden-Nangpa-Sangyepa/main/paired/source.md",
       "sourceLanguage": "bo"
+    },
+    {
+      "id": "lhenchig-kyechor",
+      "repository": "Lotus-King-Translation/Lhenchig-Kyechor",
+      "title": "Lhenchig Kyechor",
+      "originalTitle": "ལྷན་གཅིག་སྐྱེས་སྦྱོར།",
+      "description": "Attributed to Phagmodrupa. Provisional Tibetan source and annotated English translation.",
+      "englishUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Lhenchig-Kyechor/main/paired/translation.md",
+      "sourceUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Lhenchig-Kyechor/main/paired/source.md",
+      "sourceLanguage": "bo",
+      "restricted": true
     }
   ]
 }

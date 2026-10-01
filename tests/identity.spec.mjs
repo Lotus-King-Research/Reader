@@ -13,7 +13,10 @@ test('the page introduces itself to search engines and link previews', async ({p
   for (const icon of manifest.icons) expect((await request.get(icon.src)).ok(), icon.src).toBe(true);
   for (const path of ['/icon.svg', '/apple-touch-icon.png', '/og.png']) expect((await request.get(path)).ok(), path).toBe(true);
   expect(await (await request.get('/robots.txt')).text()).toContain('Sitemap: https://reader.padma.io/sitemap.xml');
-  expect(await (await request.get('/sitemap.xml')).text()).toContain('<loc>https://reader.padma.io/?work=dra-thal-gyur</loc>');
+  const sitemap = await (await request.get('/sitemap.xml')).text();
+  expect(sitemap).toContain('<loc>https://reader.padma.io/?work=togden-nangpa-sangyepa</loc>');
+  // Restricted works are not offered to search engines.
+  expect(sitemap).not.toContain('dra-thal-gyur'); expect(sitemap).not.toContain('lhenchig-kyechor');
   await page.waitForTimeout(300);
   expect(violations).toEqual([]);
 });
