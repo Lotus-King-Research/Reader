@@ -8,7 +8,7 @@ async function create(page,configuration=config) {await page.evaluate(configurat
 const snapshot=page=>page.evaluate(()=>testCatalog.works.map(({id,title,originalTitle,volumes,error,sourceError})=>({id,title,originalTitle,volumes,error,sourceError})));
 test('published config includes Dra Thal Gyur without fetching its manuscripts',async({page})=>{
   const response=await page.request.get('/reader-config.json'),published=await response.json();
-  expect(published.works).toHaveLength(1);
+  expect(published.works.length).toBeGreaterThan(0);
   expect(published.works[0]).toMatchObject({id:'dra-thal-gyur',repository:'Lotus-King-Translation/Dra-Thal-Gyur',sourceLanguage:'bo'});
   expect(published.works[0].englishUrl).toMatch(/\/paired\/translation\.md$/);
   expect(published.works[0].sourceUrl).toMatch(/\/paired\/source\.md$/);

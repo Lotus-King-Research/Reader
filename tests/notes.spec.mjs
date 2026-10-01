@@ -92,3 +92,20 @@ test('an earlier note that cannot be reached still offers GitHub', async ({page}
   await expect(page.locator('#note-content')).toContainText('can still be read on GitHub');
   await expect(page.locator('#note-source')).toBeVisible();
 });
+
+test('a note in NOTES.md, linked as a GitHub page, opens from its heading to the next note', async ({page}) => {
+  const state = await mockCatalog(page, {configuration:config});
+  const english = manuscript('english').replace('An opening line.', 'An opening line. [F001](../translations/NOTES.md#f001)');
+  state.files['Example-Text'] = {'paired/translation.md':english,'paired/source.md':manuscript('source'),
+    'translations/NOTES.md':'# Translation notes\n\n## F001\n\n- Location: U00001.\n- Category: source reading.\n\n## F002\n\n- Location: U00002.\n'};
+  await page.goto('/?work=notes-text&file=paired%2Ftranslation.md');
+  await expect(page.locator('#manuscript')).toContainText('An opening line.');
+  await page.locator('#notes-toggle').evaluate(button => button.click());
+  const link = page.locator('#manuscript .legacy-note-ref', {hasText: 'F001'});
+  await expect(link).toHaveAttribute('href', 'https://github.com/Lotus-King-Research/Example-Text/blob/main/translations/NOTES.md#f001');
+  await link.click();
+  await expect(page.locator('#note-title')).toHaveText('F001');
+  await expect(page.locator('#note-content')).toContainText('Category: source reading.');
+  await expect(page.locator('#note-content')).not.toContainText('U00002');
+  await expect(page.locator('#note-source')).toHaveAttribute('href', 'https://github.com/Lotus-King-Research/Example-Text/blob/main/translations/NOTES.md#f001');
+});

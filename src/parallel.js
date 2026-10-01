@@ -9,7 +9,8 @@ function cleanPairedApparatus(fragment) {
     if(/^Earlier notes:\s*/i.test(paragraph.textContent.trim()))paragraph.remove();
   }
   for(const link of fragment.querySelectorAll('a[href]')) {
-    if(!/(?:^|\/)LEGACY-NOTES\.md#n-[^#?\s]+$/i.test(link.getAttribute('href')))continue;
+    if(!/(?:^|\/)(?:LEGACY-)?NOTES\.md#[^#?\s]+$/i.test(link.getAttribute('href')))continue;
+    link.setAttribute('href',link.getAttribute('href').replace(/^https:\/\/raw\.githubusercontent\.com\/([^/]+\/[^/]+)\//i,'https://github.com/$1/blob/'));
     link.classList.add('legacy-note-ref');
     const marker=document.createElement('sup');marker.className='reader-note-marker legacy-note-marker';
     link.replaceWith(marker);marker.append(link);

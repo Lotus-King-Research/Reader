@@ -3733,6 +3733,33 @@ nav ol { padding-left: 1.3em; } nav li { margin: .6em 0; }
       "englishUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Dra-Thal-Gyur/main/paired/translation.md",
       "sourceUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Dra-Thal-Gyur/main/paired/source.md",
       "sourceLanguage": "bo"
+    },
+    {
+      "id": "togden-gongchig-drelwa",
+      "repository": "Lotus-King-Translation/Togden-Gongchig-Drelwa",
+      "title": "Togden Rinpoche’s Gongchig Commentary",
+      "description": "Provisional Tibetan source and annotated English working draft.",
+      "englishUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Togden-Gongchig-Drelwa/main/paired/translation.md",
+      "sourceUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Togden-Gongchig-Drelwa/main/paired/source.md",
+      "sourceLanguage": "bo"
+    },
+    {
+      "id": "gongchig-chawa",
+      "repository": "Lotus-King-Translation/Gongchig-Chawa",
+      "title": "Gongchig Chawa",
+      "description": "Provisional Tibetan source and annotated English working translation.",
+      "englishUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Gongchig-Chawa/main/paired/translation.md",
+      "sourceUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Gongchig-Chawa/main/paired/source.md",
+      "sourceLanguage": "bo"
+    },
+    {
+      "id": "togden-nangpa-sangyepa",
+      "repository": "Lotus-King-Translation/Togden-Nangpa-Sangyepa",
+      "title": "Togden Rinpoche’s Refuge Instructions",
+      "description": "Provisional Tibetan source and annotated English working translation.",
+      "englishUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Togden-Nangpa-Sangyepa/main/paired/translation.md",
+      "sourceUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Togden-Nangpa-Sangyepa/main/paired/source.md",
+      "sourceLanguage": "bo"
     }
   ]
 }
@@ -3749,7 +3776,8 @@ function cleanPairedApparatus(fragment) {
     if(/^Earlier notes:\s*/i.test(paragraph.textContent.trim()))paragraph.remove();
   }
   for(const link of fragment.querySelectorAll('a[href]')) {
-    if(!/(?:^|\/)LEGACY-NOTES\.md#n-[^#?\s]+$/i.test(link.getAttribute('href')))continue;
+    if(!/(?:^|\/)(?:LEGACY-)?NOTES\.md#[^#?\s]+$/i.test(link.getAttribute('href')))continue;
+    link.setAttribute('href',link.getAttribute('href').replace(/^https:\/\/raw\.githubusercontent\.com\/([^/]+\/[^/]+)\//i,'https://github.com/$1/blob/'));
     link.classList.add('legacy-note-ref');
     const marker=document.createElement('sup');marker.className='reader-note-marker legacy-note-marker';
     link.replaceWith(marker);marker.append(link);
@@ -6190,8 +6218,8 @@ function handleManuscriptClick(e) {
     const note=$(href.slice(1)); if (!note) return;
     e.preventDefault(); showFootnote(note,'Note '+a.dataset.footnote); return;
   }
-  // Earlier translation notes open beside the text instead of replacing it.
-  if (LEGACY_NOTE.test(href)) { e.preventDefault(); showLegacyNote(href); return; }
+  // Editorial and earlier translation notes open beside the text instead of replacing it.
+  if (EDITORIAL_NOTE.test(href)) { e.preventDefault(); showEditorialNote(href); return; }
   if (href.startsWith('#')) { e.preventDefault(); goToHash(href); return; }
   try {
     const url=new URL(href);
@@ -6399,15 +6427,20 @@ $('note-jump').addEventListener('click',()=>{closeDialog('note-dialog');if(state
 $('note-content').addEventListener('click',e=>{
   const a=e.target.closest('a[href]'); if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button!==0) return;
   if (a.dataset.noteTarget) { e.preventDefault(); const note=$(a.dataset.noteTarget); if (note) showFootnote(note,'Note '+(note.dataset.note || '')); return; }
-  if (a.dataset.legacyNote) { e.preventDefault(); showLegacyNote(a.dataset.legacyNote); return; }
+  if (a.dataset.editorialNote) { e.preventDefault(); showEditorialNote(a.dataset.editorialNote); return; }
   if (!a.getAttribute('href').startsWith('#')) return;
   e.preventDefault(); const hash=a.getAttribute('href');closeDialog('note-dialog');goToHash(hash);
 });
-const LEGACY_NOTE=/(?:^|\/)LEGACY-NOTES\.md#n-[^#?\s]+$/i;
+const EDITORIAL_NOTE=/(?:^|\/)(?:LEGACY-)?NOTES\.md#[^#?\s]+$/i;
 // Repository links read better as GitHub pages than as raw files.
 function githubPage(href) {
   try { const url=new URL(href); if (url.hostname!=='raw.githubusercontent.com') return href; const [owner,repo,ref,...path]=url.pathname.slice(1).split('/'); return `https://github.com/${owner}/${repo}/blob/${ref}/${path.join('/')}${url.hash}`; }
   catch { return href; }
+}
+// Note files are read from the raw file even when a link names its GitHub page.
+function rawFile(href) {
+  const url=new URL(href); const match=url.hostname==='github.com' && /^\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/.exec(url.pathname);
+  return match ? `https://raw.githubusercontent.com/${match[1]}/${match[2]}/${match[3]}/${match[4]}` : url.href.split('#')[0];
 }
 // Golden-source notes are named by their label (G-U00002) in other files.
 function footnoteByLabel(label) {
@@ -6420,7 +6453,7 @@ function footnoteByLabel(label) {
 function prepareNoteLinks(container) {
   container.querySelectorAll('a[href]').forEach(link=>{
     const href=link.getAttribute('href');
-    if (LEGACY_NOTE.test(href)) { link.dataset.legacyNote=href; link.removeAttribute('target'); return; }
+    if (EDITORIAL_NOTE.test(href)) { link.dataset.editorialNote=href; link.removeAttribute('target'); return; }
     const golden=/(?:^|\/)ENDNOTES\.md#(g-u\d+)$/i.exec(href), note=golden && footnoteByLabel(golden[1]);
     if (note) { link.dataset.noteTarget=note.id; link.removeAttribute('target'); return; }
     if (!href.startsWith('#')) link.href=githubPage(href);
@@ -6466,30 +6499,32 @@ function showFootnote(note,title) {
   clone.removeAttribute('id'); clone.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
   showNoteDialog(title,[...clone.childNodes],{target:note.id});
 }
-const legacyFiles=new Map();
-async function showLegacyNote(href) {
+const noteFiles=new Map();
+async function showEditorialNote(href) {
   let url; try { url=new URL(href,state.current?.sourceURL || location.href); } catch { return; }
-  const id=decodeURIComponent(url.hash.slice(1)), label=id.toUpperCase(), file=new URL(url.href); file.hash='';
-  showNoteDialog(label,[textElement('p','Opening the earlier note…','note-loading')],{source:githubPage(url.href)});
+  const id=decodeURIComponent(url.hash.slice(1)), label=id.toUpperCase(), file=rawFile(url.href), page=githubPage(url.href);
+  showNoteDialog(label,[textElement('p','Opening the note…','note-loading')],{source:page});
   try {
-    if (!legacyFiles.has(file.href)) legacyFiles.set(file.href,fetchText(file.href).then(result=>parseMarkdown(typeof result==='string' ? result : result.text)).then(compiled=>safeDOM(compiled.html,file.href)));
-    const root=await legacyFiles.get(file.href), anchor=root.querySelector(`[id="${CSS.escape('md-'+id)}"]`);
-    if (!$('note-dialog').open || $('note-source').href!==githubPage(url.href)) return;
-    if (!anchor) { showNoteDialog(label,[textElement('p','This earlier note was not found in its file. It can still be read on GitHub.')],{source:githubPage(url.href)}); return; }
-    // The note runs from its anchor to the next note's anchor.
-    const start=anchor.closest('p') && !anchor.closest('p').textContent.trim() ? anchor.closest('p') : anchor;
-    const nodes=[]; let title=label;
+    if (!noteFiles.has(file)) noteFiles.set(file,fetchText(file).then(result=>parseMarkdown(typeof result==='string' ? result : result.text)).then(compiled=>safeDOM(compiled.html,file)));
+    const root=await noteFiles.get(file), anchor=root.querySelector(`[id="${CSS.escape('md-'+id)}"]`);
+    if (!$('note-dialog').open || $('note-source').href!==page) return;
+    if (!anchor) { showNoteDialog(label,[textElement('p','This note was not found in its file. It can still be read on GitHub.')],{source:page}); return; }
+    // The note runs from its anchor (an empty anchor or its own heading) to the next note.
+    const heading=/^H[1-6]$/.test(anchor.tagName) ? anchor : null;
+    const start=heading || (anchor.closest('p') && !anchor.closest('p').textContent.trim() ? anchor.closest('p') : anchor);
+    const nodes=[]; let title=heading ? heading.textContent.replace(/§$/,'').trim() || label : label;
+    const level=heading ? Number(heading.tagName[1]) : 2;
     for (let node=start.nextSibling; node; node=node.nextSibling) {
       if (node.nodeType===3 && !node.textContent.trim()) continue;
-      if (node.nodeType===1 && (node.matches('h1,h2') && nodes.length || node.querySelector?.('a[id]:not([href])') && !node.textContent.trim())) break;
+      if (node.nodeType===1 && (/^H[1-6]$/.test(node.tagName) && Number(node.tagName[1])<=level && nodes.length || node.querySelector?.('a[id]:not([href])') && !node.textContent.trim())) break;
       if (node.nodeType===1 && /^H[1-3]$/.test(node.tagName) && !nodes.length) { title=node.textContent.replace(/§$/,'').trim(); continue; }
       nodes.push(node.cloneNode(true));
     }
     nodes.forEach(node=>{ if (node.nodeType===1) { node.removeAttribute('id'); node.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id')); } });
-    showNoteDialog(title,nodes,{source:githubPage(url.href)});
+    showNoteDialog(title,nodes,{source:page});
   } catch (error) {
-    legacyFiles.delete(file.href);
-    if ($('note-dialog').open) showNoteDialog(label,[textElement('p','The earlier note could not be reached just now. It can still be read on GitHub.')],{source:githubPage(url.href)});
+    noteFiles.delete(file);
+    if ($('note-dialog').open) showNoteDialog(label,[textElement('p','The note could not be reached just now. It can still be read on GitHub.')],{source:page});
   }
 }
 
