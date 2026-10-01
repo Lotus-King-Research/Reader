@@ -1504,6 +1504,9 @@ function syncHash() {
   const hash=window.scrollY<40 ? '' : hashFor(state.place?.el);
   const current=location.hash.replace(/^#/,'');
   if (current===hash || hash && resolveTarget(current)===resolveTarget(hash)) return;
+  // A linked passage keeps its address while it is still where the reader is reading.
+  const named=current && $(resolveTarget(current));
+  if (rendered(named)) { const box=named.getBoundingClientRect(); if (box.top<innerHeight/2 && box.bottom>READING_LINE-40) return; }
   try { const url=new URL(location.href); url.hash=hash; history.replaceState(history.state,'',url); } catch (_) {}
 }
 function washPassage(el) {
