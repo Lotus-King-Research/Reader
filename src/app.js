@@ -977,14 +977,14 @@ async function getSource(descriptor, signal, onProgress) {
 let loadingTimer=null, loadingPercent=0;
 function loadingProgress(value,text) {
   if(!state.busy)return;loadingPercent=Math.max(loadingPercent,Math.min(100,Math.round(value)));
-  $('loading-progress').setAttribute('aria-valuenow',String(loadingPercent));$('loading-fill').style.width=loadingPercent+'%';$('loading-percent').textContent=loadingPercent+'%';
+  $('loading-progress').setAttribute('aria-valuenow',String(loadingPercent));$('loading-fill').style.transform=`scaleX(${loadingPercent/100})`;$('loading-percent').textContent=loadingPercent+'%';
   if(text)$('loading-text').textContent=text;
 }
 function setBusy(on,text='Opening manuscript…') {
   clearTimeout(loadingTimer);state.busy=on;document.body.classList.toggle('loading',on);$('main-content').setAttribute('aria-busy',String(on));
   if(on){loadingPercent=0;$('loading-panel').hidden=false;$('loading-panel').classList.remove('complete');loadingProgress(2,text);announce(text);}
   else {
-    $('loading-progress').setAttribute('aria-valuenow','100');$('loading-fill').style.width='100%';$('loading-percent').textContent='100%';
+    $('loading-progress').setAttribute('aria-valuenow','100');$('loading-fill').style.transform='scaleX(1)';$('loading-percent').textContent='100%';
     $('loading-panel').classList.add('complete');loadingTimer=setTimeout(()=>{$('loading-panel').hidden=true;},reduceMotion.matches?0:220);
   }
 }
@@ -1274,11 +1274,14 @@ window.addEventListener('popstate', event => {
 });
 
 function activeLocation() {
-  const target=105; let current=state.headings[0];
-  for (const heading of state.headings) {
-    const el=$(heading.id); if (el && el.getBoundingClientRect().top<=target) current=heading; else if (el && el.getBoundingClientRect().top>target) break;
+  // Headings are in document order, so the last one above the reading line is
+  // found with a binary search: about a dozen layout reads instead of hundreds.
+  const target=105, headings=state.headings; let low=0, high=headings.length-1, found=0;
+  while (low<=high) {
+    const middle=(low+high)>>1, el=$(headings[middle].id);
+    if (el && el.getBoundingClientRect().top<=target) { found=middle; low=middle+1; } else high=middle-1;
   }
-  return current || null;
+  return headings[found] || null;
 }
 function currentPosition() {
   const heading=activeLocation(); const node=heading ? $(heading.id) : $('book-header');
@@ -1301,14 +1304,16 @@ function updateProgress() {
   const length=Math.max(1,document.documentElement.scrollHeight-innerHeight);
   state.progress=Math.max(0,Math.min(1,window.scrollY/length));
   const percent=Math.round(state.progress*100);
-  $('progress-fill').style.width=percent+'%'; $('progress-label').textContent=percent+'%'; $('progress-track').setAttribute('aria-valuenow',String(percent));
+  $('progress-fill').style.transform=`scaleX(${state.progress})`;
+  if (state.progressPercent!==percent) { state.progressPercent=percent; $('progress-label').textContent=percent+'%'; $('progress-track').setAttribute('aria-valuenow',String(percent)); }
   const active=activeLocation();
   if (state.activeHeading!==active?.id) {
     state.activeHeading=active?.id;
     $('toc').querySelectorAll('a').forEach(a=>{ if (a.dataset.target===active?.id) a.setAttribute('aria-current','location'); else a.removeAttribute('aria-current'); });
     $('footer-section').textContent=active?.text || state.current?.title || '';
   }
-  $('remaining').textContent=state.current ? percent>=99 ? 'End of manuscript' : `About ${Math.max(1,Math.ceil(state.minutes*(1-state.progress)))} min left` : 'Make yourself at home';
+  const remaining=state.current ? percent>=99 ? 'End of manuscript' : `About ${Math.max(1,Math.ceil(state.minutes*(1-state.progress)))} min left` : 'Make yourself at home';
+  if ($('remaining').textContent!==remaining) $('remaining').textContent=remaining;
 }
 window.addEventListener('scroll',()=>{ if (!scrollQueued) { scrollQueued=true; requestAnimationFrame(()=>{ if (!state.restoring && !state.busy && window.scrollY>1) state.hasMoved=true; updateProgress(); savePosition(); scrollQueued=false; }); } },{passive:true});
 window.addEventListener('resize',()=>{ if (innerWidth>920) closeNav(false); syncSidebarAccess(); updateProgress(); });
@@ -1462,7 +1467,7 @@ function handleManuscriptClick(e) {
 $('manuscript').addEventListener('click',handleManuscriptClick);
 
 let selectedPassages=[],selectedCopy='',selectionLanguage=false,selectionScroll=0;
-function closeSelectionMenu(){ $('selection-menu').hidden=true;selectedPassages=[]; }
+function closeSelectionMenu(){ if ($('selection-menu').hidden && !selectedPassages.length) return; $('selection-menu').hidden=true;selectedPassages=[]; }
 function showSelectionMenu(x,y,focus=false) {
   const selection=window.getSelection();if(!selection || selection.isCollapsed || !selection.rangeCount)return false;
   const range=selection.getRangeAt(0),article=$('manuscript');
@@ -1489,7 +1494,8 @@ $('selection-language').addEventListener('click',()=>{
   if(selectionLanguage && first && !first.sourceVisible)first.englishScrollOffset=-first.section.getBoundingClientRect().top;
   const returnOffset=!selectionLanguage?first?.englishScrollOffset:undefined;
   closeSelectionMenu();window.getSelection()?.removeAllRanges();
-  pairs.forEach(pair=>pair.show(selectionLanguage,false));
+  // Each non-silent switch forces a whole-book layout; switch silently and measure once.
+  pairs.forEach(pair=>pair.show(selectionLanguage,false,true)); updateProgress();
   if(returnOffset!==undefined){window.scrollTo({top:scrollY+first.section.getBoundingClientRect().top+returnOffset,behavior:'instant'});delete first.englishScrollOffset;}
   else if(first && first.section.getBoundingClientRect().bottom<$('toolbar-volume').getBoundingClientRect().bottom+30)first.section.scrollIntoView({block:'start',behavior:'instant'});
   announce((selectionLanguage?sourceLanguageLabel():'English')+' shown for the selected passage'+(pairs.length===1?'': 's')+'.');
