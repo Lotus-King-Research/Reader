@@ -1371,21 +1371,57 @@ $('url-form').addEventListener('submit',async e=>{
 });
 function openFilePicker() { $('file-input').click(); }
 $('import-library').addEventListener('click',openFilePicker);
+// Only the keys needed to recognise the two halves of a paired text.
+function pairingKeys(text) {
+  const block=/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] || '', keys={};
+  for (const line of block.split(/\r?\n/)) { const match=/^([\w-]+):\s*(.*?)\s*$/.exec(line); if (match) keys[match[1]]=match[2].replace(/^["']|["']$/g,''); }
+  return keys;
+}
+// Two files of one paired text (same schema and text-id, English and a source language)
+// open together as that text, whatever order they arrive in.
+async function pairLocalFiles(files) {
+  const read=await Promise.all(files.map(async file=>({file,text:await file.text()})));
+  read.forEach(item=>{ item.keys=pairingKeys(item.text); });
+  const groups=new Map();
+  for (const item of read) {
+    const {schema,language}=item.keys, textId=item.keys['text-id'];
+    if (!isPairedSchema(schema) || !textId || !/^[a-z]{2,3}(?:-[A-Za-z0-9]+)*$/.test(language || '')) continue;
+    const key=schema+'|'+textId; if (!groups.has(key)) groups.set(key,[]); groups.get(key).push(item);
+  }
+  const pairs=[], used=new Set();
+  for (const group of groups.values()) {
+    const english=group.filter(item=>item.keys.language==='en'), source=group.filter(item=>item.keys.language!=='en');
+    if (english.length!==1 || source.length!==1) continue;
+    const [en,src]=[english[0],source[0]];
+    used.add(en.file); used.add(src.file);
+    pairs.push({id:`local-pair:${en.keys['text-id']}:${en.file.size}:${src.file.size}:${en.file.lastModified}`,kind:'local',filename:en.file.name,path:en.file.name,
+      title:fileLabel(en.file.name),number:null,text:en.text,sourceText:src.text,sourceLanguage:src.keys.language,
+      sourceDescriptor:{kind:'local',filename:src.file.name,path:src.file.name,title:fileLabel(src.file.name)},pairedLocally:true});
+  }
+  return {pairs,rest:files.filter(file=>!used.has(file))};
+}
 async function importFiles(files) {
   const candidates=[...files].filter(file=>/\.(md|markdown|txt)$/i.test(file.name));
   if (!candidates.length) return notify('Choose a .md, .markdown, or .txt file.');
-  const entries=[]; const rejected=[];
-  for (const file of candidates) {
-    if (file.size>CONFIG.maximumBytes) { rejected.push(file.name); continue; }
+  const rejected=candidates.filter(file=>file.size>CONFIG.maximumBytes).map(file=>file.name), accepted=candidates.filter(file=>file.size<=CONFIG.maximumBytes);
+  if (!accepted.length) return notify('These files exceed the 4 MB limit for a text.');
+  const {pairs,rest}=accepted.length>1 ? await pairLocalFiles(accepted) : {pairs:[],rest:accepted};
+  const entries=[...pairs];
+  for (const file of rest) {
     const descriptor={ id:'local:'+file.name+':'+file.size+':'+file.lastModified, kind:'local', filename:file.name,
       path:file.name, title:fileLabel(file.name), number:volumeNumber(file.name), file };
-    addToLibrary(descriptor); entries.push(descriptor);
+    entries.push(descriptor);
   }
-  if (!entries.length) return notify('These files exceed the 4 MB limit for a text.');
-  entries.sort((a,b)=>naturalSort.compare(a.filename,b.filename));
+  entries.forEach(addToLibrary);
+  entries.sort((a,b)=>Number(!!b.pairedLocally)-Number(!!a.pairedLocally) || naturalSort.compare(a.filename,b.filename));
   closeDialog('library-dialog'); closeNav(false);
   const ok=await loadDocument(entries[0]); renderLibrary();
-  if (ok && (entries.length>1 || rejected.length)) notify(`${entries.length} text${entries.length===1?'':'s'} opened locally.${rejected.length ? ' Some oversized files were skipped.':''}`);
+  if (!ok) return;
+  if (entries[0].pairedLocally && state.parallel) {
+    // How completely the two files paired, and which edition they are.
+    const total=state.parallel.total, paired=state.parallel.pairs.length, edition=editionLine();
+    notify(`${paired.toLocaleString('en')} of ${total.toLocaleString('en')} passages paired${edition ? ' · '+edition : ''}.${entries.length>1 ? ` ${entries.length-1} more text${entries.length===2?'':'s'} opened locally.` : ''}`,'',null,9000);
+  } else if (entries.length>1 || rejected.length) notify(`${entries.length} text${entries.length===1?'':'s'} opened locally.${rejected.length ? ' Some oversized files were skipped.':''}`);
 }
 $('file-input').addEventListener('change',async e=>{ await importFiles(e.target.files); e.target.value=''; });
 $('paste-button').addEventListener('click',async()=>{
