@@ -93,7 +93,10 @@ body[data-view="collection"] .sidebar-bottom{margin-top:auto}body[data-view="col
 .parallel-section h2,.parallel-section h3{margin-top:2em}
 .prose{overflow-wrap:break-word}
 .prose p{margin-bottom:1em}
-.prose[data-alignment="anchors"] .english-passage>p,.prose[data-alignment="anchors"] .source-passage>p{white-space:pre-line}
+.prose[data-schema="paired-text/1"] .english-passage>p,.prose[data-schema="paired-text/1"] .source-passage>p{white-space:pre-line}
+.prose .parallel-section[data-format="verse"] p{white-space:normal;hyphens:none;margin-bottom:1.1em}
+.prose .parallel-section[data-format="prose"] p{white-space:normal}
+.prose .parallel-section[data-format] h1,.prose .parallel-section[data-format] h2,.prose .parallel-section[data-format] h3{overflow-wrap:anywhere;break-after:avoid}
 .prose .source-passage{font-size:1em}
 .prose .source-passage p{font-size:1.14em;line-height:2.15}
 .prose h2{border:0;padding-top:0;margin-top:2.6em}
@@ -3580,6 +3583,8 @@ nav ol { padding-left: 1.3em; } nav li { margin: .6em 0; }
 (() => {
 'use strict';
 const headings = 'H1 H2 H3 H4 H5 H6'.split(' ');
+const formats=new Set(['prose','verse','h1','h2','h3']);
+const pairId=id=>'md-'+String(id).toLowerCase();
 function cleanPairedApparatus(fragment) {
   for(const paragraph of fragment.querySelectorAll('p')) {
     if(/^Earlier notes:\s*/i.test(paragraph.textContent.trim()))paragraph.remove();
@@ -3594,17 +3599,19 @@ function cleanPairedApparatus(fragment) {
     if(/^Golden[-\s]source footnotes(?:\s+and\s+endnotes)?$/i.test(heading.textContent.trim()) && heading.nextElementSibling?.classList.contains('footnotes'))heading.remove();
   }
 }
-function parts(fragment,anchorAlignment=false) {
+function parts(fragment,anchorAlignment=false,structured=false) {
   const result=[];let current=null;
   for(const node of [...fragment.childNodes]) {
     if(node.nodeType===1 && node.classList.contains('footnotes'))continue;
+    const end=node.nodeType===1 && (node.classList.contains('reader-pair-end') || node.tagName==='P' && !node.textContent.trim() && node.children.length===1 && node.firstElementChild.classList.contains('reader-pair-end'));
+    if(anchorAlignment && end){current=null;node.remove();continue;}
     const anchor=node.nodeType===1 && !node.textContent.trim() ? (node.tagName==='A' ? node : node.tagName==='P' && node.children.length===1 ? node.firstElementChild : null) : null;
     if(anchorAlignment && anchor?.tagName==='A' && anchor.id && !anchor.hasAttribute('href')){
       current={id:anchor.id,level:'anchor',nodes:[],heading:null,anchor};result.push(current);
       // Markdown wraps empty anchors in paragraphs; keep the target without a blank stanza.
       if(node!==anchor){node.replaceWith(anchor);current.nodes.push(anchor);continue;}
     } else if(node.nodeType===1 && headings.includes(node.tagName)){
-      if(anchorAlignment){current=null;continue;}
+      if(anchorAlignment){if(structured && current){current.nodes.push(node);continue;}current=null;continue;}
       current={id:node.id,level:node.tagName,nodes:[],heading:node};result.push(current);
     } else if(!current && !anchorAlignment && (node.nodeType===1 || node.textContent.trim())){
       current={id:'opening',level:'opening',nodes:[],heading:null};result.push(current);
@@ -3632,9 +3639,69 @@ function inlineStandaloneNotes(part) {
     return true;
   });
 }
-function build(english,source,{language='bo',sectionMap=[],anchorAlignment=false,onToggle=()=>{}}={}) {
+
+function bodyHeadingsToParagraphs(body) {
+  for(const old of body.querySelectorAll('h1,h2,h3,h4,h5,h6')){
+    const paragraph=document.createElement('p');
+    for(const attr of ['id','lang','dir','title'])if(old.hasAttribute(attr))paragraph.setAttribute(attr,old.getAttribute(attr));
+    paragraph.append(...old.childNodes);old.replaceWith(paragraph);
+  }
+}
+function verseBreaks(body) {
+  for(const paragraph of body.querySelectorAll('p')){
+    const walker=document.createTreeWalker(paragraph,NodeFilter.SHOW_TEXT),nodes=[];
+    while(walker.nextNode())if(walker.currentNode.data.includes('\n') && !walker.currentNode.parentElement.closest('code,pre'))nodes.push(walker.currentNode);
+    for(const node of nodes){
+      const lines=node.data.split('\n'),fragment=document.createDocumentFragment();
+      // Marked emits a formatting newline after an authored Markdown hard break.
+      if(node.previousSibling?.nodeName==='BR' && !lines[0].trim())lines.shift();
+      lines.forEach((line,index)=>{if(index)fragment.append(document.createElement('br'));fragment.append(document.createTextNode(line));});
+      node.replaceWith(fragment);
+    }
+  }
+}
+function materialize(body,part,format,source=false) {
+  body.dataset.format=format;
+  body.classList.add(format==='verse' ? 'paired-verse' : format==='prose' ? 'paired-prose' : 'paired-heading');
+  if(format==='prose' || format==='verse'){
+    bodyHeadingsToParagraphs(body);if(format==='verse')verseBreaks(body);return;
+  }
+  const blocks=[...body.children].filter(el=>el.tagName==='P' || headings.includes(el.tagName));
+  if(!blocks.length)throw new Error('A paired heading has no heading text: '+part.id+'.');
+  const heading=document.createElement(format),headingId=(source ? 'source-' : 'english-')+part.id;
+  for(const [index,block] of blocks.entries()){
+    if(index)heading.append(document.createTextNode(' '));
+    if(block.id && block.id!==headingId){const target=document.createElement('span');target.id=block.id;heading.append(target);}
+    heading.append(...block.childNodes);
+  }
+  heading.id=headingId;
+  const plain=heading.cloneNode(true);plain.querySelectorAll('.footnote-ref,.legacy-note-ref,.reader-note-marker,.section-link').forEach(node=>node.remove());
+  heading.dataset.headingText=plain.textContent.replace(/\s+/g,' ').trim();
+  if(!source)heading.dataset.sectionAnchor=part.id;
+  if(part.anchor)part.anchor.removeAttribute('id');
+  blocks[0].replaceWith(heading);blocks.slice(1).forEach(block=>block.remove());
+}
+function structureMap(structures,left,right) {
+  if(!Array.isArray(structures))throw new Error('Paired-text structure metadata must be an array.');
+  const map=new Map();
+  for(const item of structures){
+    if(!item || typeof item.id!=='string' || !item.id || !formats.has(item.format))throw new Error('The source declares an invalid paired-text format.');
+    const id=pairId(item.id);if(map.has(id))throw new Error('The source repeats a paired-text structure ID: '+item.id+'.');
+    map.set(id,item.format);
+  }
+  const ids=[...map.keys()];
+  for(const [language,parts] of [['English',left],['source',right]]){
+    if(parts.length!==ids.length || parts.some((part,index)=>part.id!==ids[index]))throw new Error('The '+language+' text does not match the source pair structure.');
+  }
+  return map;
+}
+
+function build(english,source,{language='bo',sectionMap=[],anchorAlignment=false,structures,onToggle=()=>{}}={}) {
   if(anchorAlignment){cleanPairedApparatus(english);cleanPairedApparatus(source);}
-  const left=parts(english,anchorAlignment),right=parts(source,anchorAlignment),used=new Set(),pairs=[],sections=[];
+  if(structures!==undefined && !Array.isArray(structures))throw new Error('Paired-text structure metadata must be an array.');
+  const structured=Array.isArray(structures) && structures.length>0;
+  const left=parts(english,anchorAlignment,structured),right=parts(source,anchorAlignment,structured),used=new Set(),pairs=[],sections=[];
+  const structure=structured ? structureMap(structures,left,right) : null;
   if(anchorAlignment){left.forEach(inlineStandaloneNotes);right.forEach(inlineStandaloneNotes);}
   const englishNotes=[...english.children].find(el=>el.classList.contains('footnotes'));
   const sourceNotes=source.querySelector('.footnotes');
@@ -3653,7 +3720,7 @@ function build(english,source,{language='bo',sectionMap=[],anchorAlignment=false
   source.querySelectorAll('[id]').forEach(el=>{sourceIds.set(el.id,'source-'+el.id);el.id='source-'+el.id;});
   source.querySelectorAll('a[href^="#"]').forEach(el=>{const target=el.getAttribute('href').slice(1);if(sourceIds.has(target))el.setAttribute('href','#'+sourceIds.get(target));});
   for(const part of left) {
-    let match=explicit.has(part.id) ? byId.get(explicit.get(part.id)) : byId.get(part.id);
+    let match=structured ? byId.get(part.id) : explicit.has(part.id) ? byId.get(explicit.get(part.id)) : byId.get(part.id);
     if(!match && canOrdinal)match=right[sections.length];
     if(match && used.has(match))match=null;
     const section=document.createElement('section');section.className='parallel-section';section.id=part.id;sections.push(section);
@@ -3661,11 +3728,15 @@ function build(english,source,{language='bo',sectionMap=[],anchorAlignment=false
     part.nodes[0].replaceWith(section);
     const body=document.createElement('div');body.className='english-passage';body.lang='en';
     if(part.heading){part.heading.id='english-'+part.id;part.heading.dataset.sectionAnchor=part.id;}
-    body.append(...part.nodes);section.append(body);
+    body.append(...part.nodes);
+    const format=structure?.get(part.id);
+    if(format){section.dataset.format=format;materialize(body,part,format);}
+    section.append(body);
     if(match){
       used.add(match);
       const original=document.createElement('div');original.className='source-passage';original.lang=language;original.hidden=true;original.append(...match.nodes);
-      const pair={section,english:body,source:original,sourceVisible:false};
+      if(format)materialize(original,match,format,true);
+      const pair={section,english:body,source:original,sourceVisible:false,format:format || null};
       pair.show=(visible,keepPosition=true,silent=false)=>{
         visible=Boolean(visible);
         const offset=keepPosition ? section.getBoundingClientRect().top : 0;
@@ -4135,6 +4206,41 @@ function createCompiler(marked) {
         if (match) metadata[match[1].toLowerCase()] = match[2].trim().replace(/^(['"])(.*)\1$/, '$2');
       }
     }
+    const structures=[]; let structureError='';
+    if(metadata.schema==='paired-text/2'){
+      let open=null;const seen=new Set();
+      const markers=/^[ \t]*<!--\s*(pair\s*:[^\n]*|\/pair)\s*-->[ \t]*$/gm;
+      for(const marker of body.matchAll(markers)){
+        const value=marker[1].trim();
+        if(value==='/pair'){
+          if(!open)structureError ||= 'A paired-text closing marker has no opening pair.';
+          if(open)open.delimited=true;open=null;continue;
+        }
+        const fields=value.replace(/^pair\s*:\s*/,'').split('|').map(field=>field.trim());
+        const id=fields.shift(),formats=fields.filter(field=>/^format\s*:/.test(field));
+        if(!/^[A-Za-z][A-Za-z0-9._:-]{0,199}$/.test(id))structureError ||= 'A paired-text pair ID is invalid.';
+        if(seen.has(id.toLowerCase()))structureError ||= 'A paired-text pair ID is duplicated.';
+        seen.add(id.toLowerCase());
+        open={id,format:formats[0]?.replace(/^format\s*:\s*/,'') || '',formatCount:formats.length,delimited:false};structures.push(open);
+      }
+      if(!structures.length)structureError ||= 'This paired-text edition contains no pair markers.';
+      // Pair comments are the canonical identity; publisher HTML anchors are optional.
+      body=body.replace(/(?:^[ \t]*<a[ \t]+id=["'][^"'\n]*["'][ \t]*><\/a>[ \t]*\n\s*)?^[ \t]*<!--\s*pair\s*:\s*([A-Za-z][A-Za-z0-9._:-]{0,199})(?:[ \t]*\|[^\n]*|[ \t]*)-->[ \t]*$/gm,(_,id)=>'\n\n<a id="'+id.toLowerCase()+'"></a>\n\n');
+      body=body.replace(/^[ \t]*<!--\s*\/pair\s*-->[ \t]*$/gm,'\n\n<span class="reader-pair-end"></span>\n\n');
+      // The generic standard needs only start markers; explicit /pair is optional.
+      const records=new Map(structures.map(pair=>[pair.id.toLowerCase(),pair])),lines=[];
+      let active=null,hasContent=false;
+      const endPair=()=>{lines.push('', '<span class="reader-pair-end"></span>', '');active=null;hasContent=false;};
+      for(const line of body.split('\n')){
+        const anchor=/^<a id="([^"]+)"><\/a>$/.exec(line);
+        if(anchor && records.has(anchor[1])){if(active)endPair();active=records.get(anchor[1]);hasContent=false;}
+        else if(line==='<span class="reader-pair-end"></span>'){active=null;hasContent=false;}
+        else if(active && !active.delimited && hasContent && /^(?: {0,3}#{1,6}\s+|[ \t]*<h[1-6](?:[ \t]|>))/i.test(line))endPair();
+        else if(active && line.trim())hasContent=true;
+        lines.push(line);
+      }
+      if(active)endPair();body=lines.join('\n');
+    }
     let html = marked.parse(body);
     // Do not silently discard unused definitions.
     for (const label of definitions.keys()) noteNumber(label);
@@ -4154,7 +4260,7 @@ function createCompiler(marked) {
       }
       html += '</ol></section>';
     }
-    return {html, metadata, frontmatter, noteCount:ordered.length};
+    return {html, metadata, frontmatter, structures, structureError, noteCount:ordered.length};
   };
 }
 let mainCompiler = null;
@@ -4207,7 +4313,7 @@ function safeDOM(html, base) {
   const template = document.createElement('template'); template.innerHTML = html;
   const allowed = new Set('P H1 H2 H3 H4 H5 H6 BLOCKQUOTE UL OL LI STRONG EM B I S DEL A BR HR CODE PRE TABLE THEAD TBODY TFOOT TR TH TD CAPTION IMG FIGURE FIGCAPTION SUP SUB SPAN DIV SECTION ASIDE SMALL MARK ABBR CITE Q DL DT DD DETAILS SUMMARY RUBY RT RP WBR KBD SAMP INPUT'.split(' '));
   const drop = new Set('SCRIPT STYLE IFRAME FRAME OBJECT EMBED SVG MATH FORM BUTTON TEXTAREA SELECT OPTION LINK META BASE AUDIO VIDEO SOURCE NOSCRIPT TEMPLATE CANVAS'.split(' '));
-  const classes = new Set(['footnotes','footnote-ref','footnote-back','parallel','source-text','translation','annotation','commentary','root-text','align-center','align-right']);
+  const classes = new Set(['footnotes','footnote-ref','footnote-back','parallel','source-text','translation','annotation','commentary','root-text','align-center','align-right','reader-pair-end']);
   const frag = document.createDocumentFragment(); const ids = new Map(), usedIds = new Set(); let nodeCount = 0;
   function copy(node, parent, depth = 0) {
     if (++nodeCount > 180000 || depth > 100) throw new Error('This manuscript is too structurally complex to display safely. Split it into smaller files.');
@@ -4512,7 +4618,7 @@ function prepareContent(fragment, metadata, descriptor) {
   // Move the first H1 into the page masthead only when it begins the document.
   const firstMeaningful = [...fragment.childNodes].find(node => node.nodeType === 1 || node.textContent.trim());
   if (first && firstMeaningful === first) first.remove();
-  formatCitationLayers(fragment);
+  if(metadata.schema!=='paired-text/2')formatCitationLayers(fragment);
   const headingIds = new Set();
   fragment.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach((heading,index) => {
     let baseId = heading.id || 'md-'+heading.textContent.toLowerCase().replace(/[^\p{L}\p{N} _-]/gu,'').replace(/\s+/g,'-').slice(0,160) || 'md-section';
@@ -4539,7 +4645,7 @@ function prepareContent(fragment, metadata, descriptor) {
   });
   // Only the first plain, substantial English opening paragraph receives a drop cap.
   const opening = [...fragment.children].find(el => el.tagName === 'P');
-  if (opening && !opening.classList.contains('root-resumption') && opening.textContent.length > 120 && !chineseDominant(opening.textContent) && /^[A-Za-z]/.test(opening.textContent) && opening.firstChild?.nodeType === 3) opening.classList.add('lead-paragraph','drop-cap');
+  if (metadata.schema!=='paired-text/2' && opening && !opening.classList.contains('root-resumption') && opening.textContent.length > 120 && !chineseDominant(opening.textContent) && /^[A-Za-z]/.test(opening.textContent) && opening.firstChild?.nodeType === 3) opening.classList.add('lead-paragraph','drop-cap');
   return {title, titleNode: first && firstMeaningful === first ? first : null};
 }
 
@@ -4914,23 +5020,37 @@ function revealPassage(el) {
   if(pair && el.closest('.source-passage'))pair.show(true,false);
   else if(pair && el.closest('.english-passage'))pair.show(false,false);
 }
+function isPairedSchema(schema){return schema==='paired-text/1' || schema==='paired-text/2';}
 function pairSections(fragment,original,candidate) {
-  const parallel=ReaderParallel.build(fragment,original,{language:candidate.sourceLanguage || 'bo',sectionMap:candidate.sectionMap || [],anchorAlignment:candidate.metadata?.schema==='paired-text/1',onToggle:()=>updateProgress()});
+  const parallel=ReaderParallel.build(fragment,original,{language:candidate.sourceLanguage || 'bo',sectionMap:candidate.sectionMap || [],anchorAlignment:isPairedSchema(candidate.metadata?.schema),structures:candidate.sourceStructures || [],onToggle:()=>updateProgress()});
   parallel.setNotesVisible(state.settings.notes);return parallel;
 }
 async function prepareParallel(fragment,candidate,signal) {
-  const empty={parallel:null,parallelFragment:null};
-  if(!candidate.sourceText)return empty;
+  const unpaired=()=>({parallel:isPairedSchema(candidate.metadata?.schema)?pairSections(fragment,document.createDocumentFragment(),{...candidate,sourceStructures:[]}):null,parallelFragment:null});
+  if(!candidate.sourceText)return unpaired();
   try {
     const compiled=await parseMarkdown(candidate.sourceText,signal);
-    if(candidate.metadata?.schema==='paired-text/1'){
-      if(compiled.metadata.schema!=='paired-text/1')throw new Error('The source is not the corresponding paired-text edition.');
+    const schema=candidate.metadata?.schema,sourceSchema=compiled.metadata.schema;
+    if(isPairedSchema(schema) || isPairedSchema(sourceSchema)){
+      if(schema!==sourceSchema)throw new Error('The English and source paired-text schemas do not match.');
       for(const field of ['text-id','paired-edition'])if((candidate.metadata[field] || compiled.metadata[field]) && candidate.metadata[field]!==compiled.metadata[field])throw new Error('The English and source paired editions do not match.');
+    }
+    if(schema==='paired-text/2'){
+      if(candidate.structureError || compiled.structureError)throw new Error(candidate.structureError || compiled.structureError);
+      if(!candidate.metadata['text-id'] || !compiled.metadata['text-id'])throw new Error('Both paired-text manuscripts must identify their text-id.');
+      if(!candidate.metadata['source-edition'] || !compiled.metadata.edition || candidate.metadata['source-edition']!==compiled.metadata.edition || (compiled.metadata['source-edition'] && compiled.metadata['source-edition']!==compiled.metadata.edition))throw new Error('The translation and source edition do not match.');
+      if(!candidate.metadata['translation-edition'])throw new Error('The paired translation must identify its translation-edition.');
+      if([candidate.metadata.language,compiled.metadata.language].some(language=>!language || !/^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(language)))throw new Error('Both paired-text manuscripts must declare a valid language.');
+      if(compiled.structures.some(pair=>pair.formatCount!==1 || !['prose','verse','h1','h2','h3'].includes(pair.format)))throw new Error('Each source pair must declare exactly one format: prose, verse, h1, h2, or h3.');
+      if(candidate.structures.length!==compiled.structures.length || candidate.structures.some((pair,index)=>pair.id!==compiled.structures[index].id))throw new Error('The English and source pair IDs or their order do not match.');
+      candidate.sourceStructures=compiled.structures;
     }
     const original=safeDOM(compiled.html,candidate.sourceDescriptor?.sourceURL || candidate.sourceTextURL);
     prepareContent(original,compiled.metadata,candidate.sourceDescriptor || candidate);
-    const parallelFragment=original.cloneNode(true);return {parallel:pairSections(fragment,original,candidate),parallelFragment};
-  } catch(error){if(signal?.aborted)throw error;candidate.sourceError=error.message;candidate.sourceText='';return empty;}
+    const parallelFragment=original.cloneNode(true),draft=fragment.cloneNode(true);
+    const parallel=pairSections(draft,original,candidate);fragment.replaceChildren(draft);
+    return {parallel,parallelFragment};
+  } catch(error){if(signal?.aborted)throw error;candidate.sourceError=error.message;candidate.sourceText='';delete candidate.sourceStructures;return unpaired();}
 }
 async function loadDocument(descriptor, options = {}) {
   savePosition(true); state.controller?.abort();
@@ -4953,7 +5073,7 @@ async function loadDocument(descriptor, options = {}) {
     const sourceFragment = fragment.cloneNode(true);
     const prepared = prepareContent(fragment,compiled.metadata,descriptor);
     const title = prepared.title;
-    const candidate = {...descriptor, title, text:result.text, sourceText:result.sourceText || '',sourceDescriptor:result.sourceDescriptor || null,sourceError:result.sourceError || '', renderedBase:result.sourceURL, metadata:compiled.metadata, frontmatter:compiled.frontmatter, loaded:true};
+    const candidate = {...descriptor, title, text:result.text, sourceText:result.sourceText || '',sourceDescriptor:result.sourceDescriptor || null,sourceError:result.sourceError || '', renderedBase:result.sourceURL, metadata:compiled.metadata, frontmatter:compiled.frontmatter, structures:compiled.structures, structureError:compiled.structureError, loaded:true};
     loadingProgress(85,'Preparing Tibetan passages…');await new Promise(resolve=>requestAnimationFrame(resolve));
     if(loadId!==state.loadId || controller.signal.aborted)return false;
     const paired=await prepareParallel(fragment,candidate,controller.signal);
@@ -4963,7 +5083,7 @@ async function loadDocument(descriptor, options = {}) {
     // Publish identity and document together, only after the entire pair is ready.
     if(candidate.kind!=='specimen')addToLibrary(candidate);
     state.current=candidate;state.sourceFragment=sourceFragment;state.parallel=paired.parallel;state.parallelFragment=paired.parallelFragment;state.renderedCitations=state.settings.citations;
-    $('manuscript').replaceChildren(fragment);$('manuscript').dataset.alignment=candidate.metadata?.schema==='paired-text/1'?'anchors':'headings';
+    $('manuscript').replaceChildren(fragment);$('manuscript').dataset.alignment=isPairedSchema(candidate.metadata?.schema)?'anchors':'headings';$('manuscript').dataset.schema=candidate.metadata?.schema || '';
     $('paired-status').textContent=candidate.sourceError?'Tibetan source unavailable. '+candidate.sourceError:'';
     setView('reading');
     renderWorkIdentity(candidate, prepared.titleNode);

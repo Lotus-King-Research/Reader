@@ -30,7 +30,13 @@ A work card opens its text directly. Directory collections show available editio
 
 ## Align sections
 
-Manuscripts using `schema: paired-text/1` frontmatter are aligned by their shared empty HTML anchors, one passage per ID. Chapter headings remain outside those passages as navigation. IDs are matched exactly; missing anchors never fall back to order. Paired text IDs and edition metadata must agree. Dra Thal Gyur uses this format with 2,660 aligned passages.
+The [paired-text/2 format standard](https://github.com/Lotus-King-Translation/tibetan-text-project-template/blob/f6431c25c7c9fa852c404b8cd3e0e3cdeae1178f/FORMAT.md) defines `paired/source.md` and `paired/translation.md` as canonical content. Each passage starts with a deterministic HTML comment such as `<!-- pair: TEXT-000001 -->`. Shared comments establish identity; empty HTML anchors are optional link targets. Both files must contain each ID exactly once, in the same order. IDs are matched exactly and never sorted numerically or paired by position when identity is missing. Projects may add `<!-- /pair -->` closing markers to distinguish passage boundaries from surrounding chapter headings.
+
+Both files must declare `schema: paired-text/2` and the same `text-id`. The source declares `edition` and `language`; English declares `source-edition`, `translation-edition`, and `language`. English `source-edition` must equal the source `edition`. Optional source `source-edition` must agree with its `edition`, and `paired-edition` must match when supplied. A schema or identity mismatch disables source switching while keeping English readable.
+
+Every source-pair comment declares exactly one `format: prose | verse | h1 | h2 | h3`. The source is authoritative; English inherits the format through the shared ID. Prose flows as body text. Verse preserves each manuscript's authored line breaks without requiring equal line counts. Heading pairs become headings at the declared level in both languages; English wording supplies navigation labels. Chapter headings outside pairs remain navigation wrappers. Dra Thal Gyur's published v2 edition contains 2,667 aligned passages: 48 prose, 2,448 verse, two H1 headings, and 169 H3 headings.
+
+Existing `schema: paired-text/1` manuscripts remain supported through their shared empty HTML anchors. Their text IDs and edition metadata must agree; missing anchors never fall back to order. The reader applies v2 structure only when both manuscripts declare v2.
 
 For ordinary Markdown, a leading H1 is the work title. Subsequent headings divide the manuscript into sections. The reader first matches identical heading IDs. If both outlines have the same number and heading levels, and stable IDs do not indicate reordered sections, it pairs them by order. The publisher must ensure the sections correspond. For differing outlines or ordering, provide explicit mappings:
 
@@ -43,7 +49,7 @@ For ordinary Markdown, a leading H1 is the work title. Subsequent headings divid
 
 Give stable IDs to Markdown headings with HTML such as `<h2 id="opening">The opening</h2>`. Use the original ID in configuration (the reader also accepts its `md-` prefixed form). Explicit maps disable ordinal fallback. Unmatched sections stay English; Copy remains available in the selection menu. Introductory text before the first section uses `opening`; avoid using that ID on a heading. A text without headings is treated as one section.
 
-A missing or invalid Tibetan source leaves the English translation readable and displays the failure. Source texts retain their own notes and links. The sticky toolbar’s notes icon shows or hides endnote references and endnotes; they are hidden by default. In paired-text manuscripts, standalone references attach to the preceding prose, legacy note links become optional superscripts, and repeated “Earlier notes” paragraphs are omitted from the reading page. The original Markdown remains unchanged. English headings remain the navigation outline in either language. Search includes both languages and reveals the language of the selected result.
+A missing or invalid Tibetan source leaves the English translation readable and displays the failure. Source texts retain their own notes and links. The sticky toolbar’s notes icon shows or hides endnote references and endnotes; they are hidden by default. In paired-text manuscripts, standalone references attach to the preceding passage, legacy note links become optional superscripts, and repeated “Earlier notes” paragraphs are omitted from the reading page. The original Markdown remains unchanged. English heading labels remain the navigation outline in either language. Search includes both languages and reveals the language of the selected result.
 
 ## Typography and export
 
