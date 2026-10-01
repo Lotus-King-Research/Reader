@@ -759,6 +759,8 @@ function catalogCard(work) {
   button.append(textElement('span','English · Tibetan','work-card-kicker'));
   const original=textElement('span',work.originalTitle || '', 'work-card-original');original.lang=work.sourceLanguage || 'bo';button.append(original);
   button.append(textElement('span',work.title,'work-card-title'),textElement('span',work.description,'work-card-detail'));
+  const extent=storageRead('extent:'+work.id), version=/v\d[\w.-]*$/i.exec(extent?.edition || '')?.[0];
+  if (extent?.passages>1) button.append(textElement('span',[extent.passages.toLocaleString('en')+' passages',version ? 'Edition '+version : ''].filter(Boolean).join(' · '),'work-card-extent'));
   const status=work.error ? 'Source unavailable · Try again' : work.pending ? 'Finding editions…' : work.stale ? (work.stale.state==='unverified' ? 'Not checked with GitHub · may not be the latest' : 'Saved copy · may not be the latest') : '';
   button.append(textElement('span',status,'work-card-status'));
   const foot=textElement('span',work.english.kind==='file' || work.volumes.length===1 ? 'Read' : work.checkedAt ? 'Read first edition' : 'Show editions','work-card-bottom');foot.append(icon('arrow'));button.append(foot);
@@ -807,6 +809,21 @@ async function showWork(id,path) {
   }
 }
 $('refresh-catalog').addEventListener('click',()=>catalog.refreshAll({force:true}));
+// One quiet line under the title: which edition, whether it is verified, and how long it is.
+function syncProvenance() {
+  const current=state.current; if (!current) return;
+  const edition=workIdentity(current).edition, version=/v\d[\w.-]*$/i.exec(edition)?.[0];
+  $('source-kind').textContent=current.kind==='specimen' ? 'Design specimen' : current.kind==='embedded' ? 'Offline reading copy' : ['local','paste'].includes(current.kind) ? 'Local text' : edition ? 'Edition '+(version || edition) : 'Public text';
+  $('source-kind').title=edition || '';
+  const passages=state.parallel?.total || 0;
+  $('reading-estimate').textContent=[passages>1 ? passages.toLocaleString('en')+' passages' : '',`About ${state.minutes} min read`].filter(Boolean).join(' · ');
+  const status=$('source-status');
+  if (current.kind==='catalog') {
+    const revisions=[current.revision,current.sourceRevision].filter(Boolean).map(sha=>sha.slice(0,7)).join(' · ');
+    status.textContent=(current.stale ? (current.stale.state==='unverified' ? 'Not checked with GitHub' : 'Saved copy') : 'Verified')+(revisions ? ' · '+revisions : '');
+    status.title=[current.revision ? 'English revision '+current.revision : '',current.sourceRevision ? sourceLanguageLabel()+' revision '+current.sourceRevision : ''].filter(Boolean).join('\n');
+  } else { status.textContent=current.kind==='specimen' ? 'Not source text' : ['local','paste','embedded'].includes(current.kind) ? 'Opened locally' : 'Loaded from source'; status.removeAttribute('title'); }
+}
 // A saved or unverified copy is readable, but the reader must know it may be out of date.
 function staleMessage(stale) {
   if (stale.state==='unverified') return 'GitHub is limiting requests, so this copy has not been checked against its published revision. It may not be the latest version.';
@@ -822,7 +839,7 @@ function syncRevisionNotice() {
   const work=catalog.get(current.catalogId), latest=work.volumes.find(f=>f.path===current.path);
   if (work.pending) return;
   // A live check that finds the same revision confirms the open copy is current.
-  if (latest && !work.stale && !work.error && !latestChanged(work,latest,current)) current.stale=null;
+  if (latest && !work.stale && !work.error && !latestChanged(work,latest,current) && current.stale) { current.stale=null; syncProvenance(); }
   if (latestChanged(work,latest,current)) {
     $('revision-message').textContent='The English or source text has changed. Your current passage has not been changed.';
     $('revision-load').textContent='Load latest'; notice.hidden=false;
@@ -891,7 +908,7 @@ function workIdentity(entry) {
     work: pick(m.work_title, m['work-title'], m.work, entry.workTitle),
     chinese: pick(m.original_title, m.tibetan_title, m.title_bo, entry.originalTitle, m.chinese_title, m['chinese-title'], m.title_zh, m['title-zh'], entry.chineseTitle, chineseDominant(entry.title || '') ? entry.title : ''),
     romanization: pick(m.romanization, m.pinyin),
-    author: pick(m.author), translator: pick(m.translator), edition: pick(m.edition,m.source_edition,m.base_edition)
+    author: pick(m.author), translator: pick(m.translator), edition: pick(m['paired-edition'],m.edition,m['translation-edition'],m.source_edition,m.base_edition)
   };
 }
 function readingLabel(entry) { return entry.kind==='catalog' && catalog.get(entry.catalogId).english.kind==='file' ? entry.workTitle : entry.kind==='catalog' ? entry.workTitle+' · '+fileLabel(entry.path) : entry.title; }
@@ -1186,8 +1203,6 @@ async function loadDocument(descriptor, options = {}) {
     setView('reading'); syncCitationSetting();
     renderWorkIdentity(candidate, prepared.titleNode);
     const shortTitle = readingLabel(candidate);
-    $('source-kind').textContent = candidate.kind === 'specimen' ? 'Design specimen' : candidate.kind === 'embedded' ? 'Offline reading copy' : candidate.kind === 'local' || candidate.kind === 'paste' ? 'Local manuscript' : 'Public manuscript';
-    $('source-status').textContent=candidate.kind === 'catalog' ? (candidate.stale ? (candidate.stale.state==='unverified' ? 'Not checked with GitHub · ' : 'Saved copy · ')+candidate.revision.slice(0,7) : 'GitHub · '+candidate.revision.slice(0,7)) : candidate.kind === 'specimen' ? 'Not source text' : candidate.kind === 'local' || candidate.kind === 'paste' || candidate.kind === 'embedded' ? 'Opened locally' : 'Loaded from source';
     $('source-button').disabled = false; $('bookmark-button').disabled = candidate.kind === 'specimen';
     const countable = $('manuscript').cloneNode(true);
     countable.querySelectorAll('[data-reader-ui],[hidden]').forEach(el=>el.remove());
@@ -1195,7 +1210,9 @@ async function loadDocument(descriptor, options = {}) {
     const latinWords = (plainText.replace(/\p{Script=Han}/gu,' ').match(/[\p{L}\p{N}]+/gu) || []).length;
     const hanChars = (plainText.match(/\p{Script=Han}/gu) || []).length;
     state.minutes = Math.max(1,Math.ceil(latinWords/200 + hanChars/350));
-    $('reading-estimate').textContent = `About ${state.minutes} min read`;
+    syncProvenance();
+    // Counts only (never text), so the collection can show each work's extent.
+    if (candidate.kind==='catalog') storageWrite('extent:'+candidate.catalogId,{passages:state.parallel?.total || 0,edition:workIdentity(candidate).edition || ''});
 
     $('end-caption').textContent=candidate.kind === 'specimen' ? 'End of the typography specimen. Open your own manuscript to read.' : 'You have reached the end of this manuscript.';
     document.title=shortTitle+' · '+CONFIG.title;
