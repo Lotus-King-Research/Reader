@@ -761,10 +761,18 @@ function catalogCard(work) {
   button.append(textElement('span',work.title,'work-card-title'),textElement('span',work.description,'work-card-detail'));
   const extent=storageRead('extent:'+work.id), version=/v\d[\w.-]*$/i.exec(extent?.edition || '')?.[0];
   if (extent?.passages>1) button.append(textElement('span',[extent.passages.toLocaleString('en')+' passages',version ? 'Edition '+version : ''].filter(Boolean).join(' · '),'work-card-extent'));
+  // Where the reader stopped (position and section label only; never text).
+  const last=storageRead('last:'+work.id), known=last && (work.english.kind==='file' || !work.volumes.length || work.volumes.some(file=>file.path===last.path));
+  const continuing=known && last.progress>.025, finished=continuing && last.progress>=.985;
+  if (continuing) {
+    const bar=document.createElement('span'), fill=document.createElement('span');
+    bar.className='work-card-progress'; bar.setAttribute('aria-hidden','true'); fill.style.transform=`scaleX(${Math.min(1,last.progress)})`; bar.append(fill);
+    button.append(bar, textElement('span', finished ? 'Read to the end' : `${last.label ? last.label+' · ' : ''}${Math.round(last.progress*100)}% read`, 'work-card-continue'));
+  }
   const status=work.error ? 'Source unavailable · Try again' : work.pending ? 'Finding editions…' : work.stale ? (work.stale.state==='unverified' ? 'Not checked with GitHub · may not be the latest' : 'Saved copy · may not be the latest') : '';
   button.append(textElement('span',status,'work-card-status'));
-  const foot=textElement('span',work.english.kind==='file' || work.volumes.length===1 ? 'Read' : work.checkedAt ? 'Read first edition' : 'Show editions','work-card-bottom');foot.append(icon('arrow'));button.append(foot);
-  button.addEventListener('click',()=>showWork(work.id,li.querySelector('select')?.value));li.append(button);
+  const foot=textElement('span',continuing && !finished ? 'Continue reading' : finished ? 'Read again' : work.english.kind==='file' || work.volumes.length===1 ? 'Read' : work.checkedAt ? 'Read first edition' : 'Show editions','work-card-bottom');foot.append(icon('arrow'));button.append(foot);
+  button.addEventListener('click',()=>showWork(work.id,continuing && !finished ? last.path : li.querySelector('select')?.value));li.append(button);
   if(work.english.kind==='directory' && work.volumes.length>1){
     const label=textElement('label','Edition','edition-picker'),select=document.createElement('select');select.dataset.editions=work.id;select.setAttribute('aria-label','Edition of '+work.title);
     for(const file of work.volumes){const option=textElement('option',catalog.descriptor(work.id,file.path).title);option.value=file.path;select.append(option);}
@@ -1227,13 +1235,22 @@ async function loadDocument(descriptor, options = {}) {
     state.restoring=true; window.scrollTo({top:0,behavior:'instant'});
     if (options.updateURL !== false) updateLocation(candidate,'',false);
     state.loadedFromURL=true;
+    const resumable = position && position.progress > .025 && position.progress < .985 && candidate.kind !== 'specimen';
     if (requestedHash) {
-      requestAnimationFrame(() => { goToHash(requestedHash,false); state.restoring=false; updateProgress(); });
+      requestAnimationFrame(() => {
+        goToHash(requestedHash,false); state.restoring=false; updateProgress(); state.place=placeAtReadingLine();
+        if (resumable && Math.abs(position.progress-state.progress)>.02) {
+          state.holdPlace={y:window.scrollY};
+          notify('Opened at the linked passage.','Return to your place',() => restorePosition(position),10000);
+        }
+      });
     } else {
       state.restoring=false; updateProgress();
-      if (position && position.progress > .025 && position.progress < .985 && candidate.kind !== 'specimen') {
-        notify('Your place is still here.', 'Resume reading',() => restorePosition(position), 14000);
-      }
+      if (resumable) requestAnimationFrame(() => {
+        if (loadId!==state.loadId) return;
+        restorePosition(position);
+        notify(position.label ? `Back at ${position.label}.` : 'Back where you left off.','Start from the beginning',() => { window.scrollTo({top:0,behavior:'instant'}); savePosition(true); },6000);
+      });
     }
     announce(`${shortTitle} opened. ${state.headings.length} sections.`);
     return true;
@@ -1416,20 +1433,53 @@ function activeLocation() {
   }
   return headings[found] || null;
 }
+const READING_LINE=105;
+// The block under the reading line. Its offset survives changes of type size,
+// measure, rotation and language far better than a section heading's does.
+function placeAtReadingLine() {
+  const main=$('manuscript'); if (state.view!=='reading' || !main || main.hidden) return null;
+  const box=main.getBoundingClientRect(); if (box.width<=0) return null;
+  const x=Math.max(1,Math.min(innerWidth-2,box.left+Math.min(box.width/2,240)));
+  for (let y=READING_LINE; y<Math.min(innerHeight,READING_LINE+90); y+=15) {
+    let el=document.elementFromPoint(x,y);
+    if (!el || !main.contains(el) || el===main) continue;
+    el=el.closest('p,li,h1,h2,h3,h4,h5,h6,blockquote,pre,table,figure,dt,dd,hr,section') || el;
+    if (!main.contains(el)) continue;
+    // A pair section's ID is part of the edition; other IDs are the nearest stable target.
+    const keyed=el.closest('section[id]') || el.closest('[id]'); const anchor=keyed && main.contains(keyed) && keyed!==main ? keyed : null;
+    return {el, offset:el.getBoundingClientRect().top, anchor:anchor?.id || '', anchorOffset:anchor ? anchor.getBoundingClientRect().top : 0};
+  }
+  return null;
+}
+function rendered(el) { return !!el?.isConnected && el.getClientRects().length>0; }
 function currentPosition() {
-  const heading=activeLocation(); const node=heading ? $(heading.id) : $('book-header');
-  return {progress:state.progress, heading:heading?.id || '', offset:node ? node.getBoundingClientRect().top : 0, at:Date.now()};
+  const heading=activeLocation(); const node=heading ? $(heading.id) : $('book-header'), place=placeAtReadingLine();
+  return {progress:state.progress, heading:heading?.id || '', offset:node ? node.getBoundingClientRect().top : 0,
+    anchor:place?.anchor || '', anchorOffset:place?.anchorOffset || 0, label:heading ? navLabel(heading.text) : '', at:Date.now()};
+}
+// Keeps the passage being read where it is while the layout around it changes.
+function pinPlace() {
+  const place=state.place; if (state.view!=='reading' || !place || !rendered(place.el)) return;
+  const delta=place.el.getBoundingClientRect().top-place.offset; if (Math.abs(delta)<1) return;
+  state.restoring=true; window.scrollTo({top:Math.max(0,window.scrollY+delta),behavior:'instant'}); state.restoring=false;
 }
 function savePosition(force=false) {
   if (state.view !== 'reading' || !state.current || state.current.kind==='specimen' || state.restoring || state.busy || !state.hasMoved) return;
   if (!force && Date.now()-state.lastSave<1000) return;
-  state.lastSave=Date.now(); storageWrite('position:'+state.current.id,currentPosition());
+  // Following a link must not overwrite the place the reader left; reading on from it does.
+  if (state.holdPlace) { if (Math.abs(window.scrollY-state.holdPlace.y)<innerHeight) return; state.holdPlace=null; }
+  state.lastSave=Date.now(); const position=currentPosition();
+  storageWrite('position:'+state.current.id,position);
+  if (state.current.kind==='catalog') storageWrite('last:'+state.current.catalogId,{path:state.current.path,progress:position.progress,label:position.label,at:position.at});
 }
 function restorePosition(position) {
-  state.restoring=true;
-  const el=position.heading ? $(position.heading) : null;
-  const top=el ? window.scrollY+el.getBoundingClientRect().top-position.offset : position.progress*Math.max(0,document.documentElement.scrollHeight-innerHeight);
-  window.scrollTo({top:Math.max(0,top),behavior:'instant'}); state.restoring=false; state.hasMoved=true; updateProgress(); savePosition(true);
+  state.restoring=true; state.holdPlace=null;
+  const anchor=position.anchor ? $(position.anchor) : null, heading=position.heading ? $(position.heading) : null;
+  const top=rendered(anchor) ? window.scrollY+anchor.getBoundingClientRect().top-position.anchorOffset
+    : rendered(heading) ? window.scrollY+heading.getBoundingClientRect().top-position.offset
+    : position.progress*Math.max(0,document.documentElement.scrollHeight-innerHeight);
+  window.scrollTo({top:Math.max(0,top),behavior:'instant'}); state.restoring=false; state.hasMoved=true;
+  state.place=placeAtReadingLine(); updateProgress(); savePosition(true);
 }
 let scrollQueued=false;
 function updateProgress() {
@@ -1448,26 +1498,31 @@ function updateProgress() {
   const remaining=state.current ? percent>=99 ? 'End of the text' : `About ${Math.max(1,Math.ceil(state.minutes*(1-state.progress)))} min left` : 'Make yourself at home';
   if ($('remaining').textContent!==remaining) $('remaining').textContent=remaining;
 }
-window.addEventListener('scroll',()=>{ if (!scrollQueued) { scrollQueued=true; requestAnimationFrame(()=>{ if (!state.restoring && !state.busy && window.scrollY>1) state.hasMoved=true; updateProgress(); savePosition(); scrollQueued=false; }); } },{passive:true});
+window.addEventListener('scroll',()=>{ if (!scrollQueued) { scrollQueued=true; requestAnimationFrame(()=>{ if (!state.restoring && !state.busy && window.scrollY>1) state.hasMoved=true; if (!state.restoring && !document.body.classList.contains('dialog-open')) state.place=placeAtReadingLine() || state.place; updateProgress(); savePosition(); scrollQueued=false; }); } },{passive:true});
 window.addEventListener('resize',()=>{ if (innerWidth>920) closeNav(false); syncSidebarAccess(); updateProgress(); });
-new ResizeObserver(()=>{ requestAnimationFrame(updateProgress); }).observe($('main-content'));
+let readingWidth=0;
+new ResizeObserver(entries=>{
+  // Only a change of width reflows the text; height changes come from the text itself.
+  const width=Math.round(entries[entries.length-1].contentRect.width);
+  if (width!==readingWidth) { const first=!readingWidth; readingWidth=width; if (!first) pinPlace(); }
+  requestAnimationFrame(updateProgress);
+}).observe($('main-content'));
+document.fonts?.addEventListener?.('loadingdone',()=>pinPlace());
 window.addEventListener('pagehide',()=>savePosition(true));
 document.addEventListener('visibilitychange',()=>{ if (document.hidden) savePosition(true); });
 function updateBookmarkUI() {
   state.bookmark=state.current ? storageRead('bookmark:'+state.current.id) : null;
   $('bookmark-button').classList.toggle('bookmark-set',!!state.bookmark);
-  $('bookmark-button').setAttribute('aria-pressed',String(!!state.bookmark));
-  $('bookmark-button').setAttribute('aria-label',state.bookmark ? 'Update bookmark to this position':'Bookmark this position');
+  $('bookmark-button').title=state.bookmark ? 'Move the bookmark here (B)' : 'Bookmark this place (B)';
   $('resume-button').hidden=!state.bookmark;
+  $('resume-label').textContent=state.bookmark?.label ? 'Bookmark · '+state.bookmark.label : 'Return to bookmark';
 }
 function bookmarkPosition() {
   if (state.view !== 'reading' || !state.current || state.current.kind==='specimen') return notify('Open a text to save a bookmark.');
-  const old=state.bookmark, position=currentPosition();
-  if (old && Math.abs(old.progress-position.progress)<.01) {
-    storageRemove('bookmark:'+state.current.id); updateBookmarkUI(); notify('Bookmark removed.'); return;
-  }
-  if (!storageWrite('bookmark:'+state.current.id,position)) return notify('Browser storage is unavailable. This bookmark could not be saved.');
-  updateBookmarkUI(); notify('A place to return to.', 'Remove bookmark',()=>{storageRemove('bookmark:'+state.current.id);updateBookmarkUI();});
+  const old=state.bookmark, position=currentPosition(), key='bookmark:'+state.current.id;
+  if (!storageWrite(key,position)) return notify('Browser storage is unavailable. This bookmark could not be saved.');
+  updateBookmarkUI(); announce(old ? 'Bookmark moved.' : 'Bookmark saved.');
+  notify(old ? 'Bookmark moved here.' : 'Bookmarked.', 'Undo',()=>{ if (old) storageWrite(key,old); else storageRemove(key); updateBookmarkUI(); });
 }
 $('bookmark-button').addEventListener('click',bookmarkPosition);
 $('resume-button').addEventListener('click',()=>{ closeNav(false); if (state.bookmark) restorePosition(state.bookmark); });
@@ -1546,7 +1601,7 @@ function applySettings(persist=true) {
   $$('[data-measure]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.measure)===settings.measure)));
   $('auto-citations').checked=settings.citations;setNotesVisible(settings.notes,false);
   if (persist) storageWrite('settings',settings);
-  rebuildCitationLayers();
+  rebuildCitationLayers(); pinPlace();
 }
 $('settings-trigger').addEventListener('click',()=>openDialog('settings-dialog'));
 $$('.theme-choice').forEach(b=>b.addEventListener('click',()=>{state.settings.theme=b.dataset.theme;applySettings();}));

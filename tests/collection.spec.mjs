@@ -217,7 +217,7 @@ test('the sticky toolbar can save a bookmark and the sidebar returns to that rea
   const box = await bookmark.boundingBox();
   expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize().width);
   await page.mouse.click(box.x + box.width / 2,box.y + box.height / 2);
-  await expect(bookmark).toHaveAttribute('aria-pressed','true');
+  await expect(bookmark).toHaveClass(/bookmark-set/); await expect(page.locator('#toast-text')).toHaveText('Bookmarked.');
   await page.evaluate(() => scrollTo(0,1600));
   await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(before + 400);
   await sidebar(page); await page.locator('#resume-button').click();
