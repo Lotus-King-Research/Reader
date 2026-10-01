@@ -1,8 +1,9 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "lukija",
+  "name": "padma-reader",
   "compatibility_date": "2026-09-25",
   "workers_dev": true,
+  "routes": [{"pattern": "reader.padma.io", "custom_domain": true}],
   "assets": {
     "directory": "./public",
     "not_found_handling": "404-page"
