@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "A configurable English–Tibetan reader with section switching and offline export.",
+  "description": "A configurable English\u2013Tibetan reader with section switching and offline export.",
   "engines": {
     "node": ">=22"
   },
@@ -12,8 +12,9 @@
     "dev": "npm run build && wrangler dev",
     "serve": "node scripts/serve.mjs",
     "deploy": "npm run build && wrangler deploy",
-    "test": "npm run build && playwright test",
-    "test:epub": "node scripts/check-epubs.mjs"
+    "test": "npm run build && npm run test:unit && playwright test",
+    "test:epub": "node scripts/check-epubs.mjs",
+    "test:unit": "node --test \"tests/unit/*.test.mjs\""
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

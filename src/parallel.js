@@ -176,9 +176,20 @@ function build(english,source,{language='bo',sectionMap=[],anchorAlignment=false
     notesVisible=Boolean(visible);for(const holder of referenceHolders)holder.hidden=!notesVisible;
     syncNotes();return notesVisible;
   }
+  const sectionIndex=new Map(sections.map((section,index)=>[section,index]));
+  const pairIndex=new Map(pairs.map((pair,index)=>[pair.section,index]));
   function pairsForRange(range){
     if(!range || range.collapsed)return [];
-    return pairs.filter(pair=>{try{return range.intersectsNode(pair.sourceVisible ? pair.source : pair.english);}catch{return false;}});
+    const intersects=pair=>{try{return range.intersectsNode(pair.sourceVisible ? pair.source : pair.english);}catch{return false;}};
+    const sectionOf=node=>(node.nodeType===1 ? node : node.parentElement)?.closest('.parallel-section');
+    const first=sectionOf(range.startContainer),last=sectionOf(range.endContainer);
+    // Examine only the selected stretch instead of every passage in the book.
+    if(sectionIndex.has(first) && sectionIndex.has(last)){
+      const from=sectionIndex.get(first),to=sectionIndex.get(last),selected=[];
+      for(let i=from;i<=to;i++){const pair=pairs[pairIndex.get(sections[i])];if(pair && intersects(pair))selected.push(pair);}
+      return selected;
+    }
+    return pairs.filter(intersects);
   }
   setNotesVisible(false);
   return {pairs,sections,total:left.length,unpaired:left.length-pairs.length,setNotesVisible,pairsForRange,

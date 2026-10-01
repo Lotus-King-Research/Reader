@@ -57,9 +57,17 @@ test('one unavailable repository does not prevent another work from refreshing',
   await create(page);fixture.status[names[0]]=404;await page.evaluate(()=>testCatalog.refreshAll());const works=await snapshot(page);
   expect(works[0].error).toContain('unavailable');expect(works[1].error).toBe('');expect(works[1].volumes).toHaveLength(2);
 });
-test('rate limits pause automatic requests until their retry time',async({page})=>{
-  await create(page);fixture.status[names[0]]=429;await page.evaluate(()=>testCatalog.refresh('paired-text'));const before=fixture.requests.length;
-  await page.evaluate(()=>testCatalog.refresh('paired-text',{force:true}));expect(fixture.requests).toHaveLength(before);expect((await snapshot(page))[0].error).toContain('request limit');
+test('rate limits pause GitHub API requests while raw files keep the text readable and marked unverified',async({page})=>{
+  await create(page);fixture.status[names[0]]=429;
+  const apiCalls=()=>fixture.requests.filter(url=>url.startsWith('https://api.github.com/')).length;
+  expect(await page.evaluate(()=>testCatalog.refresh('paired-text'))).toBe(true);const before=apiCalls();
+  expect(await page.evaluate(()=>testCatalog.refresh('paired-text',{force:true}))).toBe(true);expect(apiCalls()).toBe(before);
+  const work=await page.evaluate(()=>({error:testCatalog.works[0].error,stale:testCatalog.works[0].stale}));
+  expect(work.error).toBe('');expect(work.stale.state).toBe('unverified');
+  const result=await page.evaluate(()=>testCatalog.read('paired-text','translation/en.md'));
+  expect(result.text).toContain('English opening');expect(result.sourceText).toContain('བོད་ཡིག');
+  expect(result.descriptor.stale.state).toBe('unverified');
+  expect(result.descriptor.revision).toBe(blobSHA(fixture.files[names[0]]['translation/en.md']));
 });
 test('raw and blob URLs identify configured files and preserve section fragments',async({page})=>{
   await create(page);const found=await page.evaluate(()=>[
