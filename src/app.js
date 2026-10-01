@@ -93,7 +93,10 @@ $$('dialog').forEach(dialog => {
   dialog.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => dialog.close()));
 });
 function syncSidebarAccess() {
-  $('sidebar').inert = document.body.classList.contains('focus-mode') || (innerWidth<=920 && !document.body.classList.contains('nav-open'));
+  const drawer=innerWidth<=920, open=document.body.classList.contains('nav-open');
+  $('sidebar').inert = document.body.classList.contains('focus-mode') || (drawer && !open);
+  // While the drawer is open on a phone, the page behind it is out of reach.
+  document.querySelector('.shell').inert = drawer && open;
 }
 function openNav() {
   document.body.classList.remove('focus-mode'); syncFocus();
@@ -1408,9 +1411,12 @@ function buildOutline() {
     if (level===2) heading.dataset.sectionNumber=number;
     const anchor=heading.dataset.sectionAnchor || heading.id;
     state.headings.push({id:anchor,text,level,number});
+    // A pointer convenience; keyboards and screen readers use the passage menu's Copy link.
     const link=document.createElement('a'); link.className='section-link'; link.setAttribute('href','#'+heading.id);
-    link.setAttribute('aria-label','Link to section: '+text); link.textContent='§'; heading.append(link);
+    link.setAttribute('aria-hidden','true'); link.tabIndex=-1; link.textContent='§'; heading.append(link);
   }
+  // The work's title is the page's one first-level heading; title lines in the text sit below it.
+  $('manuscript').querySelectorAll('h1').forEach(h=>{ if (!h.closest('.title-block')) h.setAttribute('aria-level','2'); });
   renderOutline();
 }
 function renderOutline() {
@@ -1680,7 +1686,6 @@ $('resume-button').addEventListener('click',()=>{ closeNav(false); if (state.boo
 function syncFocus() {
   const active=document.body.classList.contains('focus-mode');
   syncSidebarAccess(); $('focus-button').setAttribute('aria-pressed',String(active));
-  $('focus-button').setAttribute('aria-label',active ? 'Leave focus mode':'Enter focus mode');
 }
 function toggleFocus() { if (state.view !== 'reading') return; closeNav(false); document.body.classList.toggle('focus-mode'); syncFocus(); }
 $('focus-button').addEventListener('click',toggleFocus);
