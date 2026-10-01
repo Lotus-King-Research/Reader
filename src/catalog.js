@@ -1,7 +1,11 @@
-/* Configured public bilingual catalog. Texts remain in their source repositories. */
+/* Configured public bilingual catalog. Texts remain in their source repositories.
+   On the hosted reader, files come through the same-origin edge API (worker/), so
+   readers never spend GitHub's per-IP request quota. Without that API (forks, local
+   servers) the catalog reads GitHub directly, and if GitHub limits requests it falls
+   back to the raw files, marked unverified. */
 (() => {
 'use strict';
-const INTERVAL=5*60*1000, LIMIT=4*1024*1024, TREE_LIMIT=16*1024*1024;
+const INTERVAL=5*60*1000, DIRECT_INTERVAL=15*60*1000, LIMIT=4*1024*1024, TREE_LIMIT=16*1024*1024;
 const textFile=path=>/\.(?:md|markdown|txt)$/i.test(path);
 const safePath=path=>typeof path==='string' && !!path && !path.startsWith('/') && !/[\\\u0000-\u001f]/.test(path) && path.split('/').every(part=>part && part!=='.' && part!=='..');
 const encoded=path=>path.split('/').map(encodeURIComponent).join('/');
@@ -50,7 +54,7 @@ function configuredWork(item,index) {
   if (typeof id!=='string' || !/^[a-zA-Z0-9._-]+$/.test(id)) throw new Error(`Work ${index+1} has an invalid id.`);
   if (item.sections!==undefined && (!Array.isArray(item.sections) || item.sections.some(s=>!s || typeof s.english!=='string' || typeof s.source!=='string' || !s.english || !s.source))) throw new Error(`Work ${index+1} has invalid section mappings.`);
   if (item.sourceLanguage!==undefined && !/^[a-z]{2,3}(?:-[A-Za-z0-9]+)*$/.test(item.sourceLanguage)) throw new Error(`Work ${index+1} has an invalid source language.`);
-  return {id,repository:item.repository,title:String(item.title || item.repository.split('/')[1].replace(/[-_]/g,' ')),originalTitle:String(item.originalTitle || ''),description:String(item.description || ''),sourceLanguage:item.sourceLanguage || 'bo',sectionMap:(item.sections || []).map(s=>({...s})),englishUrl:english.githubURL,sourceUrl:source.githubURL,branch:english.ref || '',owner:english.owner || '',english,source,directory:english.kind==='directory'?english.path:'',volumes:[],checkedAt:0,attemptedAt:0,error:'',sourceError:'',etag:'',pending:null};
+  return {id,repository:item.repository,title:String(item.title || item.repository.split('/')[1].replace(/[-_]/g,' ')),originalTitle:String(item.originalTitle || ''),description:String(item.description || ''),sourceLanguage:item.sourceLanguage || 'bo',sectionMap:(item.sections || []).map(s=>({...s})),englishUrl:english.githubURL,sourceUrl:source.githubURL,branch:english.ref || '',owner:english.owner || '',english,source,directory:english.kind==='directory'?english.path:'',volumes:[],checkedAt:0,attemptedAt:0,error:'',sourceError:'',stale:null,pending:null};
 }
 function create(onChange=()=>{},config) {
   let error='',works=[];
@@ -62,6 +66,10 @@ function create(onChange=()=>{},config) {
     error=errors.join(' ');
   } catch(e) {error='Reader configuration is invalid: '+e.message;}
   let retryAt=0;
+  // The edge API is same-origin; window.READER_EDGE=false disables it, a string sets its origin.
+  const edgeOrigin=typeof window.READER_EDGE==='string' ? window.READER_EDGE : window.READER_EDGE!==false && /^https?:$/.test(location.protocol) ? location.origin : '';
+  let edge=edgeOrigin ? 'unknown' : 'off';
+  const interval=()=>edge==='off' ? DIRECT_INTERVAL : INTERVAL;
   const refreshProgress=new Map(),inlineContent=new Map();
   let inlineBytes=0;
   function rememberInline(sha,bytes) {
@@ -85,7 +93,8 @@ function create(onChange=()=>{},config) {
     return {id:`catalog:${id}:${path}`,kind:'catalog',catalogId:id,path,number:null,verified:!!file?.sha,
       title:work.english.kind==='file'?work.title:relative.replace(/\.(?:md|markdown|txt)$/i,'').replace(/[-_]/g,' '),workTitle:work.title,originalTitle:work.originalTitle,sourceLanguage:work.sourceLanguage,sectionMap:work.sectionMap,
       sourceURL:englishURLs.url,githubURL:englishURLs.githubURL,revision:file?.sha || '',sourceBytes:file?.size || 0,checkedAt:work.checkedAt,
-      sourceTextURL:sourceURLs.url,sourceGithubURL:sourceURLs.githubURL,sourcePath,sourceRevision:file?.sourceFile?.sha || '',sourceTextBytes:file?.sourceFile?.size || 0};
+      sourceTextURL:sourceURLs.url,sourceGithubURL:sourceURLs.githubURL,sourcePath,sourceRevision:file?.sourceFile?.sha || '',sourceTextBytes:file?.sourceFile?.size || 0,
+      stale:work.stale?{...work.stale}:null};
   }
   async function request(url,{headers={},signal,limit=LIMIT,onProgress}={}) {
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000),cancel=()=>controller.abort();
@@ -94,13 +103,16 @@ function create(onChange=()=>{},config) {
       const response=await fetch(url,{headers,signal:controller.signal,credentials:'omit',referrerPolicy:'no-referrer',cache:'no-cache'});
       if(response.status===304)return {response,bytes:null};
       if(!response.ok) {
+        let error;
         if([403,429].includes(response.status) && new URL(url).hostname==='api.github.com') {
           const retry=Number(response.headers.get('retry-after')),reset=Number(response.headers.get('x-ratelimit-reset'))*1000;
           retryAt=Math.max(Date.now()+60000,retry?Date.now()+retry*1000:reset || Date.now()+300000);
           if(!Number.isFinite(retryAt))retryAt=Date.now()+300000;
-          throw new Error('GitHub is limiting requests. Checks will resume after '+new Date(retryAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+'.');
-        }
-        throw new Error(response.status===404?'The configured public text is unavailable or has been removed.':`The source returned HTTP ${response.status}.`);
+          error=new Error('GitHub is limiting requests. Checks will resume after '+new Date(retryAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+'.');
+          error.rateLimited=true;
+        } else error=new Error(response.status===404?'The configured public text is unavailable or has been removed.':`The source returned HTTP ${response.status}.`);
+        error.status=response.status;error.edge=response.headers.get('x-reader-edge')==='1';
+        throw error;
       }
       if(Number(response.headers.get('content-length'))>limit)throw new Error('The source exceeds the reader’s size limit.');
       const length=Number(response.headers.get('content-length')),encoding=response.headers.get('content-encoding');
@@ -122,10 +134,63 @@ function create(onChange=()=>{},config) {
     if(!file || !safePath(file.path) || !/^[a-f0-9]{40}$/.test(file.sha) || !Number.isSafeInteger(file.size) || file.size<0)throw new Error('The repository returned invalid file revision information.');
     return {path:file.path,name:file.path.split('/').pop(),sha:file.sha,size:file.size};
   }
-  async function list(endpoint,cache,onProgress) {
+  const edgeURL=(route,endpoint,path=endpoint.path)=>`${edgeOrigin}/api/v1/${route}?${new URLSearchParams({repo:`${endpoint.owner}/${endpoint.repo}`,ref:endpoint.ref,path})}`;
+  const savedState=(response,meta)=>({state:(meta?.cache ?? response?.headers.get('x-reader-cache'))==='stale' ? 'saved' : '',
+    savedAt:Date.parse(meta?.fetchedAt ?? response?.headers.get('x-reader-fetched-at') ?? '') || null});
+  // Edge listing: the revision only, or, when a text is being opened, the verified body too.
+  async function listEdge(endpoint,onProgress,bodies) {
+    if(endpoint.kind==='directory') {
+      const {response,bytes}=await request(edgeURL('tree',endpoint),{headers:{Accept:'application/json'},limit:TREE_LIMIT,onProgress});
+      if(response.headers.get('x-reader-edge')!=='1')throw Object.assign(new Error('No reader edge API.'),{notEdge:true});
+      const listing=json(bytes),flags=savedState(null,listing);
+      if(!Array.isArray(listing.files))throw new Error('The edge returned an invalid listing.');
+      const files=listing.files.map(validateFile).map(file=>({...file,via:'edge',stale:flags.state,savedAt:flags.savedAt}));
+      if(new Set(files.map(f=>f.path)).size!==files.length)throw new Error('The repository listing contains duplicate paths.');
+      return files.sort((a,b)=>a.path.localeCompare(b.path,undefined,{numeric:true}));
+    }
+    if(!bodies) {
+      const {response,bytes}=await request(edgeURL('meta',endpoint),{headers:{Accept:'application/json'},limit:65536,onProgress});
+      if(response.headers.get('x-reader-edge')!=='1')throw Object.assign(new Error('No reader edge API.'),{notEdge:true});
+      const meta=json(bytes),flags=savedState(null,meta);
+      return [{...validateFile({path:endpoint.path,sha:meta.sha,size:meta.size}),via:'edge',stale:flags.state,savedAt:flags.savedAt}];
+    }
+    const {response,bytes}=await request(edgeURL('file',endpoint),{limit:LIMIT,onProgress});
+    if(response.headers.get('x-reader-edge')!=='1')throw Object.assign(new Error('No reader edge API.'),{notEdge:true});
+    const entry=validateFile({path:endpoint.path,sha:response.headers.get('x-reader-blob-sha'),size:bytes.length}),flags=savedState(response);
+    // The edge checks each file against its revision; check again here before keeping it.
+    if(globalThis.crypto?.subtle && !await matches(bytes,entry.sha))throw new Error('The text failed its revision check. Please try again.');
+    rememberInline(entry.sha,bytes);
+    return [{...entry,via:'edge',stale:flags.state,savedAt:flags.savedAt}];
+  }
+  // Last resort without the edge: GitHub refused the revision check, so read the raw
+  // file and record the revision it actually has, marked as not checked by GitHub.
+  async function listRaw(endpoint,onProgress) {
+    if(!globalThis.crypto?.subtle)throw new Error('This browser cannot check text revisions.');
+    const {bytes}=await request(locations(endpoint).url,{limit:LIMIT,onProgress});
+    const entry=validateFile({path:endpoint.path,sha:await blobSHA(bytes),size:bytes.length});
+    rememberInline(entry.sha,bytes);
+    return [{...entry,via:'raw',stale:'unverified',savedAt:null}];
+  }
+  async function list(endpoint,cache,onProgress,bodies=false) {
     if(!endpoint.github)return [{path:endpoint.path,name:endpoint.path,sha:'',size:0}];
-    if(Date.now()<retryAt)throw new Error('GitHub request limit reached. Automatic checks will resume shortly.');
-    const headers={Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
+    if(edge!=='off') {
+      try {const files=await listEdge(endpoint,onProgress,bodies);edge='on';return files;}
+      catch(error) {
+        // A host without the edge API answers with its own 404 page: use GitHub directly from now on.
+        // Any other edge failure falls back to GitHub for this request only.
+        if(error.notEdge || (!error.edge && [404,405,501].includes(error.status)))edge='off';
+      }
+    }
+    try {return await listGitHub(endpoint,cache,onProgress);}
+    catch(error) {
+      if(endpoint.kind==='file' && (error.rateLimited || error instanceof TypeError || error.status>=500))return listRaw(endpoint,onProgress);
+      throw error;
+    }
+  }
+  async function listGitHub(endpoint,cache,onProgress) {
+    if(Date.now()<retryAt)throw Object.assign(new Error('GitHub request limit reached. Automatic checks will resume shortly.'),{rateLimited:true});
+    // Only CORS-safelisted headers, so GitHub requests need no preflight.
+    const headers={Accept:'application/vnd.github+json'};
     if(endpoint.kind==='file') {
       const {bytes}=await request(api(endpoint)+`/contents/${encoded(endpoint.path)}?ref=${encodeURIComponent(endpoint.ref)}`,{headers,limit:2*1024*1024,onProgress});
       const file=json(bytes);if(file.type!=='file' || file.path!==endpoint.path)throw new Error('The configured URL no longer identifies a public text file.');
@@ -149,42 +214,52 @@ function create(onChange=()=>{},config) {
     if(new Set(files.map(f=>f.path)).size!==files.length)throw new Error('The repository listing contains duplicate paths.');
     return files.sort((a,b)=>a.path.localeCompare(b.path,undefined,{numeric:true}));
   }
-  async function refresh(id,{force=false,onProgress}={}) {
+  async function refresh(id,{force=false,onProgress,bodies=false}={}) {
     const work=get(id);
     let tracker=refreshProgress.get(work);
     if(!tracker){tracker={listeners:new Set(),last:null};refreshProgress.set(work,tracker);}
     if(onProgress){tracker.listeners.add(onProgress);if(tracker.last && work.pending)notifyProgress(onProgress,tracker.last);}
     try {
       if(work.pending)return await work.pending;
-      if(!force && Date.now()-work.attemptedAt<INTERVAL)return !work.error && !!work.checkedAt;
+      if(!force && Date.now()-work.attemptedAt<interval())return !work.error && !!work.checkedAt;
       const states=[{loadedBytes:0,totalBytes:null,done:false},{loadedBytes:0,totalBytes:null,done:false}];
       const metadataProgress=(index,event)=>{
         Object.assign(states[index],event);
-        const progress=0.15*states.reduce((sum,state)=>sum+(state.done?1:byteFraction(state.loadedBytes,state.totalBytes)),0)/2;
-        tracker.last={stage:'metadata',progress,loadedBytes:states.reduce((sum,state)=>sum+state.loadedBytes,0),totalBytes:states.every(state=>state.totalBytes!==null)?states.reduce((sum,state)=>sum+state.totalBytes,0):null,language:index===0?'en':work.sourceLanguage,phase:event.done?'complete':'download'};
+        // When a listing carries the text itself (edge, raw or GitHub's inline body),
+        // this stage is the whole download; a bare revision listing is a small step.
+        const share=state=>state.done ? (bodies && state.loadedBytes>65536 ? 0.9 : 0.15) : (bodies ? 0.9 : 0.15)*byteFraction(state.loadedBytes,state.totalBytes);
+        const progress=states.reduce((sum,state)=>sum+share(state),0)/2;
+        tracker.last={stage:bodies && event.loadedBytes>65536?'download':'metadata',progress,loadedBytes:states.reduce((sum,state)=>sum+state.loadedBytes,0),totalBytes:states.every(state=>state.totalBytes!==null)?states.reduce((sum,state)=>sum+state.totalBytes,0):null,language:index===0?'en':work.sourceLanguage,phase:event.done?'complete':'download'};
         for(const listener of tracker.listeners)notifyProgress(listener,tracker.last);
       };
       tracker.last=null;
       work.pending=(async()=>{
         work.attemptedAt=Date.now();work.error='';work.sourceError='';
         try {
-          const cache=new Map(), results=await Promise.allSettled([work.english,work.source].map((endpoint,index)=>list(endpoint,cache,event=>metadataProgress(index,event)).finally(()=>metadataProgress(index,{done:true,totalBytes:states[index].loadedBytes}))));
+          const cache=new Map(), results=await Promise.allSettled([work.english,work.source].map((endpoint,index)=>list(endpoint,cache,event=>metadataProgress(index,event),bodies).finally(()=>metadataProgress(index,{done:true,totalBytes:states[index].loadedBytes}))));
           if(results[0].status==='rejected')throw results[0].reason;
           const sourceFiles=results[1].status==='fulfilled'?results[1].value:[];
           if(results[1].status==='rejected')work.sourceError=results[1].reason.message;
           const byPath=new Map(sourceFiles.map(file=>[file.path,file]));
           work.volumes=results[0].value.map(file=>({...file,sourceFile:byPath.get(pairedPath(work,file.path)) || null}));
+          // A saved (edge) or unverified (raw) copy may not be the latest version; say so.
+          const flagged=[...results[0].value,...sourceFiles].filter(file=>file.stale);
+          work.stale=flagged.length?{state:flagged.some(file=>file.stale==='unverified')?'unverified':'saved',savedAt:Math.min(...flagged.map(file=>file.savedAt || Infinity))}:null;
+          if(work.stale && !Number.isFinite(work.stale.savedAt))work.stale.savedAt=null;
           work.checkedAt=Date.now();return true;
-        } catch(e) {work.error=e instanceof TypeError?'GitHub could not be reached. Check your connection and try again.':e.message;return false;}
+        } catch(e) {work.error=e instanceof TypeError?'The text could not be reached. Check your connection and try again.':e.message;return false;}
       })();onChange();
       try{return await work.pending;}finally{work.pending=null;onChange();}
     } finally {if(onProgress)tracker.listeners.delete(onProgress);}
   }
   async function refreshAll(options) {for(const work of works)await refresh(work.id,options);}
+  async function blobSHA(bytes) {
+    const header=new TextEncoder().encode(`blob ${bytes.length}\0`),blob=new Uint8Array(header.length+bytes.length);blob.set(header);blob.set(bytes,header.length);
+    const digest=await crypto.subtle.digest('SHA-1',blob);return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
   async function matches(bytes,sha) {
     if(!globalThis.crypto?.subtle)return false;
-    const header=new TextEncoder().encode(`blob ${bytes.length}\0`),blob=new Uint8Array(header.length+bytes.length);blob.set(header);blob.set(bytes,header.length);
-    const digest=await crypto.subtle.digest('SHA-1',blob);return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join('')===sha;
+    return await blobSHA(bytes)===sha;
   }
   async function readFile(endpoint,file,signal,onProgress) {
     if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
@@ -202,6 +277,10 @@ function create(onChange=()=>{},config) {
     const inline=endpoint.github?inlineContent.get(file.sha):null;
     if(inline && inline.length===file.size){totalBytes=0;report('verify');const text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(inline);report('complete');return text;}
     if(!endpoint.github){({bytes}=await download(url));const text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);report('complete');return text;}
+    if(file.via==='edge') {
+      try {({bytes}=await download(edgeURL('file',endpoint,file.path)));report('verify');if(!await matches(bytes,file.sha))bytes=null;}catch(e){if(signal?.aborted)throw e;bytes=null;}
+      if(bytes){if(bytes.length!==file.size)throw new Error('The text size does not match the published revision.');const text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);report('complete');return text;}
+    }
     try {({bytes}=await download(url+'?revision='+file.sha));report('verify');if(!await matches(bytes,file.sha))bytes=null;}catch(e){if(signal?.aborted)throw e;bytes=null;}
     if(!bytes){if(Date.now()<retryAt)throw new Error('The latest file could not be verified while GitHub is limiting requests. Your open text is unchanged.');report('fallback');({bytes}=await download(api(endpoint)+'/git/blobs/'+file.sha,{Accept:'application/vnd.github.raw+json'}));report('verify');if(globalThis.crypto?.subtle && !await matches(bytes,file.sha))throw new Error('The text failed its revision check. Please try again.');}
     if(bytes.length!==file.size)throw new Error('The text size does not match the published revision.');
@@ -219,7 +298,7 @@ function create(onChange=()=>{},config) {
     if(fresh)report({stage:'metadata',progress:0.15,loadedBytes:0,totalBytes:0,language:null,phase:'complete'});
     else {
       let checked;
-      try {checked=await waitFor(refresh(id,{force:true,onProgress:report}),signal);}
+      try {checked=await waitFor(refresh(id,{force:true,onProgress:report,bodies:true}),signal);}
       finally {refreshProgress.get(work)?.listeners.delete(report);}
       if(!checked)throw new Error(work.error || 'The latest English text could not be verified.');
     }
@@ -227,10 +306,12 @@ function create(onChange=()=>{},config) {
     const file=work.volumes.find(f=>f.path===path);if(!file)throw new Error('This text is no longer in the configured repository.');
     const entry=descriptor(id,path),states=[{loadedBytes:0,totalBytes:file.size || null,fraction:0},{loadedBytes:0,totalBytes:file.sourceFile?.size || null,fraction:file.sourceFile?0:1}];
     const weights=[file.size || 65536,file.sourceFile?(file.sourceFile.size || 65536):0],weight=weights[0]+weights[1];
+    // Downloads continue from wherever the listing stage left the bar.
+    const base=Math.max(0.15,Math.min(0.9,progress));
     const downloadProgress=(index,event)=>{
       Object.assign(states[index],event);
       states[index].fraction=Math.max(states[index].fraction,event.phase==='complete'?1:byteFraction(event.loadedBytes,event.totalBytes));
-      report({stage:'download',progress:0.15+0.83*states.reduce((sum,state,i)=>sum+state.fraction*weights[i],0)/weight,loadedBytes:states.reduce((sum,state)=>sum+state.loadedBytes,0),totalBytes:states.every((state,i)=>!weights[i] || state.totalBytes!==null)?states.reduce((sum,state)=>sum+(state.totalBytes || 0),0):null,language:index===0?'en':work.sourceLanguage,phase:event.phase});
+      report({stage:'download',progress:base+(0.98-base)*states.reduce((sum,state,i)=>sum+state.fraction*weights[i],0)/weight,loadedBytes:states.reduce((sum,state)=>sum+state.loadedBytes,0),totalBytes:states.every((state,i)=>!weights[i] || state.totalBytes!==null)?states.reduce((sum,state)=>sum+(state.totalBytes || 0),0):null,language:index===0?'en':work.sourceLanguage,phase:event.phase});
     };
     downloadProgress(0,{loadedBytes:0,totalBytes:states[0].totalBytes,phase:'download'});
     const results=await Promise.allSettled([readFile(work.english,file,signal,event=>downloadProgress(0,event)),file.sourceFile?readFile(work.source,file.sourceFile,signal,event=>downloadProgress(1,event)):Promise.reject(new Error(work.sourceError || 'The matching source text is unavailable.'))]);
@@ -252,7 +333,7 @@ function create(onChange=()=>{},config) {
     }
     return null;
   }
-  return {works,get,descriptor,refresh,refreshAll,read,identify,error,interval:INTERVAL};
+  return {works,get,descriptor,refresh,refreshAll,read,identify,error,interval:INTERVAL,get edge(){return edge;}};
 }
 window.ReaderCatalog=Object.freeze({create});
 window.LukijaCatalog=window.ReaderCatalog;

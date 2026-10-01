@@ -26,7 +26,9 @@ Edit `public/reader-config.json`, add a work, run `npm run build`, and deploy. T
 
 The repository name and two URLs are required. Other fields are optional. Use public Markdown or UTF-8 text URLs; GitHub blob and raw URLs work. A pair of GitHub tree URLs supports a collection of nested files, matched by their relative filenames. Any `.md`, `.markdown`, or `.txt` filename works. Use distinct IDs when multiple entries use the same repository.
 
-A work card opens its text directly. Directory collections show available editions in a dropdown on the card. The loading bar reports source transfer and page preparation progress; an already open text resumes without downloading again. The collection can be searched by title, source title, or repository. Text loading and edition discovery happen on demand. Verified text bodies included in GitHub metadata are reused to avoid downloading them twice. Public GitHub sources use revision verification, with update checks for the active work every five minutes while visible. The reader discovers work metadata on demand to avoid exhausting GitHub’s anonymous API quota. A newer revision requires **Load latest**; it never replaces a passage mid-read. Public URLs on other hosts require browser CORS access and have no GitHub revision guarantee. Private repositories require downloading the files and opening them locally; credentials are never embedded.
+A work card opens its text directly. Directory collections show available editions in a dropdown on the card. The loading bar reports source transfer and page preparation progress; an already open text resumes without downloading again. The collection can be searched by title, source title, or repository. Text loading and edition discovery happen on demand. Every GitHub text is checked against its Git blob SHA-1 before it is shown, with update checks for the active work every five minutes while visible. A newer revision requires **Load latest**; it never replaces a passage mid-read.
+
+On the hosted reader, published texts come through Reader’s own edge cache, so readers never call GitHub and never spend its request quota. The Worker in `worker/` fetches each configured file from GitHub at most once a minute per Cloudflare location, records its revision, and keeps the last verified copy in Workers KV. If GitHub cannot be reached, that saved copy is shown with a notice and a toolbar badge saying it may not be the latest version, and the time it was last confirmed current; **Check again** retries. Without the edge API (a fork or a local static server), the reader checks GitHub directly; if GitHub limits requests, it reads the raw files and marks them as not checked against their published revision. Public URLs on other hosts require browser CORS access and have no GitHub revision guarantee. Private repositories require downloading the files and opening them locally; credentials are never embedded.
 
 ## Align sections
 
@@ -57,7 +59,7 @@ Noto Sans Tibetan Regular is bundled and embedded into the standalone HTML, incl
 
 Local Markdown files and pasted texts stay on the device. **Manuscript & source** provides Markdown download, offline HTML, EPUB, and printing. An offline HTML copy includes both loaded manuscripts and the font; section switches work without network access. EPUB includes the currently visible language of each section, with language tags and relevant endnotes regardless of the on-screen notes toggle. Its font choice depends on the reading device; the Tibetan font is not embedded in EPUB. No translation is generated or corrected. The typography specimen is synthetic interface documentation.
 
-Preferences, positions, and bookmarks use browser storage; manuscript bodies are never stored there. Markdown is sanitized before display. Files are limited to 4 MB each. No analytics or account flow is included.
+Preferences, positions, and bookmarks use browser storage; manuscript bodies are never stored there. Markdown is sanitized before display. Files are limited to 4 MB each. No analytics or account flow is included. The edge Worker keeps no request logs, and its saved copies contain only the published files listed in the configuration.
 
 ## Development
 
@@ -70,13 +72,13 @@ npm run dev
 npm test
 ```
 
-`public/index.html` contains the application shell and styles. The reader application (`src/app.js`) and its engines (`src/catalog.js`, `src/parallel.js`, `src/epub.js`) are embedded by `scripts/build.mjs`, together with configuration and the Tibetan font. Edit the source modules, not their copies inside `public/index.html`, and commit source modules and built HTML together. `npm run serve` provides the local test server.
+`public/index.html` contains the application shell and styles. The reader application (`src/app.js`) and its engines (`src/catalog.js`, `src/parallel.js`, `src/epub.js`) are embedded by `scripts/build.mjs`, together with configuration and the Tibetan font. Edit the source modules, not their copies inside `public/index.html`, and commit source modules and built HTML together. `npm run dev` runs the reader with the edge Worker and a local KV store (`wrangler dev`); `npm run serve` provides the static test server, without the edge API.
 
-Browser tests cover desktop and phone layouts, source verification, arbitrary filenames and nested collections, alignment, selection context menus, inline editions, loading progress, cancellation, failures, language tags, export, notes, and local imports. Test fixtures are synthetic. CI runs browser tests and validates the generated EPUBs using EPUBCheck 5.4.0. Locally, set `EPUBCHECK_JAR` and run `npm run test:epub` to perform the same EPUB validation.
+Unit tests (`npm run test:unit`) cover the Markdown compiler’s linear parsing and the edge Worker. Browser tests cover desktop and phone layouts, the edge cache and its saved-copy notice, source verification, arbitrary filenames and nested collections, alignment, selection context menus, inline editions, loading progress, cancellation, failures, language tags, export, notes, and local imports. Test fixtures are synthetic. CI runs browser tests and validates the generated EPUBs using EPUBCheck 5.4.0. Locally, set `EPUBCHECK_JAR` and run `npm run test:epub` to perform the same EPUB validation.
 
 ## Cloudflare deployment
 
-The site uses [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/) with worker name `padma-reader` and custom domain `reader.padma.io`. Only `public/` is deployed.
+The site uses [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/) with worker name `padma-reader` and custom domain `reader.padma.io`. Files in `public/` are served as static assets; only `/api/*` runs the Worker in `worker/`, which serves the configured manuscripts from the edge cache. On the first deploy Wrangler creates the `READER_CACHE` KV namespace for the saved copies, and a cron trigger refreshes them every 30 minutes so they stay current when nobody is reading. Single files need no GitHub credentials. To raise GitHub’s limit for directory listings, optionally add a token that can read public repositories with `npx wrangler secret put GITHUB_TOKEN`. Worker observability is disabled, so no request logs are kept.
 
 ```sh
 npm ci

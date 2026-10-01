@@ -1,11 +1,22 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "padma-reader",
+  "main": "worker/index.js",
   "compatibility_date": "2026-09-25",
   "workers_dev": true,
   "routes": [{"pattern": "reader.padma.io", "custom_domain": true}],
   "assets": {
     "directory": "./public",
-    "not_found_handling": "404-page"
-  }
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    // Only the manuscript API runs Worker code; every other path is a static asset.
+    "run_worker_first": ["/api/*"]
+  },
+  // Last verified copy of each configured file, served (and marked stale) when GitHub
+  // cannot be reached. Wrangler creates this namespace on the first deploy.
+  "kv_namespaces": [{"binding": "READER_CACHE"}],
+  // Keeps the saved copies current even when nobody is reading.
+  "triggers": {"crons": ["*/30 * * * *"]},
+  // No request logs are kept.
+  "observability": {"enabled": false}
 }

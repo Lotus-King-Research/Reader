@@ -683,7 +683,7 @@ function catalogCard(work) {
   button.append(textElement('span','English · Tibetan','work-card-kicker'));
   const original=textElement('span',work.originalTitle || '', 'work-card-original');original.lang=work.sourceLanguage || 'bo';button.append(original);
   button.append(textElement('span',work.title,'work-card-title'),textElement('span',work.description,'work-card-detail'));
-  const status=work.error ? 'Source unavailable · Try again' : work.pending ? 'Finding editions…' : '';
+  const status=work.error ? 'Source unavailable · Try again' : work.pending ? 'Finding editions…' : work.stale ? (work.stale.state==='unverified' ? 'Not checked with GitHub · may not be the latest' : 'Saved copy · may not be the latest') : '';
   button.append(textElement('span',status,'work-card-status'));
   const foot=textElement('span',work.english.kind==='file' || work.volumes.length===1 ? 'Read' : work.checkedAt ? 'Read first edition' : 'Show editions','work-card-bottom');foot.append(icon('arrow'));button.append(foot);
   button.addEventListener('click',()=>showWork(work.id,li.querySelector('select')?.value));li.append(button);
@@ -731,26 +731,45 @@ async function showWork(id,path) {
   }
 }
 $('refresh-catalog').addEventListener('click',()=>catalog.refreshAll({force:true}));
+// A saved or unverified copy is readable, but the reader must know it may be out of date.
+function staleMessage(stale) {
+  if (stale.state==='unverified') return 'GitHub is limiting requests, so this copy has not been checked against its published revision. It may not be the latest version.';
+  const when=stale.savedAt ? new Date(stale.savedAt).toLocaleString([],{dateStyle:'medium',timeStyle:'short'}) : '';
+  return `GitHub could not be reached, so this is Reader’s saved copy${when ? ', last confirmed current on '+when : ''}. It may not be the latest version.`;
+}
+function latestChanged(work,latest,current) {
+  return !!latest && !work.stale && (latest.sha!==current.revision || (latest.sourceFile?.sha || '')!==(current.sourceRevision || ''));
+}
 function syncRevisionNotice() {
-  const current=state.current, notice=$('revision-notice'); notice.hidden=true;
+  const current=state.current, notice=$('revision-notice'); notice.hidden=true; notice.classList.remove('stale-notice'); $('stale-badge').hidden=true;
   if (current?.kind!=='catalog' || state.view!=='reading') return;
   const work=catalog.get(current.catalogId), latest=work.volumes.find(f=>f.path===current.path);
   if (work.pending) return;
-  if (work.error) {
+  // A live check that finds the same revision confirms the open copy is current.
+  if (latest && !work.stale && !work.error && !latestChanged(work,latest,current)) current.stale=null;
+  if (latestChanged(work,latest,current)) {
+    $('revision-message').textContent='The English or source text has changed. Your current passage has not been changed.';
+    $('revision-load').textContent='Load latest'; notice.hidden=false;
+  } else if (current.stale) {
+    $('revision-message').textContent=staleMessage(current.stale);
+    $('revision-load').textContent='Check again'; notice.classList.add('stale-notice'); notice.hidden=false;
+    const badge=$('stale-badge'); badge.textContent=current.stale.state==='unverified' ? 'Not checked' : 'Saved copy'; badge.title=staleMessage(current.stale); badge.hidden=false;
+  } else if (work.error) {
     $('revision-message').textContent='The latest source could not be checked. Your open revision is unchanged. '+work.error;
     $('revision-load').textContent='Check again'; notice.hidden=false;
   } else if (work.checkedAt && !latest) {
     $('revision-message').textContent='This volume is no longer listed on GitHub. You are reading the copy already open in this session.';
     $('revision-load').textContent='Check again'; notice.hidden=false;
-  } else if (latest && (latest.sha!==current.revision || (latest.sourceFile?.sha || '')!==(current.sourceRevision || ''))) {
-    $('revision-message').textContent='The English or source text has changed. Your current passage has not been changed.';
-    $('revision-load').textContent='Load latest'; notice.hidden=false;
   }
 }
+$('stale-badge').addEventListener('click',()=>{
+  const current=state.current; if (!current?.stale) return;
+  notify(staleMessage(current.stale),'Check again',()=>catalog.refresh(current.catalogId,{force:true}),12000);
+});
 $('revision-load').addEventListener('click',async()=>{
   const current=state.current; if (current?.kind!=='catalog') return;
   const work=catalog.get(current.catalogId), file=work.volumes.find(f=>f.path===current.path);
-  if (work.error || !file) {await catalog.refresh(work.id,{force:true}); return;}
+  if (!latestChanged(work,file,current)) {await catalog.refresh(work.id,{force:true}); return;}
   const position=currentPosition();
   const ok=await loadDocument(catalog.descriptor(work.id,current.path),{updateURL:false});
   if (ok && state.current?.id===current.id) restorePosition(position);
@@ -829,6 +848,7 @@ function renderWorkIdentity(entry, titleNode = null) {
 }
 function setView(view) {
   state.view=view;document.body.dataset.view=view;const reading=view==='reading';$('welcome').hidden=reading;
+  if(!reading){$('revision-notice').hidden=true;$('stale-badge').hidden=true;}
   $('paired-status').hidden=!reading || !state.current?.sourceError;
   ['book-header','manuscript','manuscript-end'].forEach(id=>$(id).hidden=!reading);
   if(reading)$('collection-link').removeAttribute('aria-current');else $('collection-link').setAttribute('aria-current','page');
@@ -1077,7 +1097,7 @@ async function loadDocument(descriptor, options = {}) {
     renderWorkIdentity(candidate, prepared.titleNode);
     const shortTitle = readingLabel(candidate);
     $('source-kind').textContent = candidate.kind === 'specimen' ? 'Design specimen' : candidate.kind === 'embedded' ? 'Offline reading copy' : candidate.kind === 'local' || candidate.kind === 'paste' ? 'Local manuscript' : 'Public manuscript';
-    $('source-status').textContent=candidate.kind === 'catalog' ? 'GitHub · '+candidate.revision.slice(0,7) : candidate.kind === 'specimen' ? 'Not source text' : candidate.kind === 'local' || candidate.kind === 'paste' || candidate.kind === 'embedded' ? 'Opened locally' : 'Loaded from source';
+    $('source-status').textContent=candidate.kind === 'catalog' ? (candidate.stale ? (candidate.stale.state==='unverified' ? 'Not checked with GitHub · ' : 'Saved copy · ')+candidate.revision.slice(0,7) : 'GitHub · '+candidate.revision.slice(0,7)) : candidate.kind === 'specimen' ? 'Not source text' : candidate.kind === 'local' || candidate.kind === 'paste' || candidate.kind === 'embedded' ? 'Opened locally' : 'Loaded from source';
     $('source-button').disabled = false; $('bookmark-button').disabled = candidate.kind === 'specimen';
     const countable = $('manuscript').cloneNode(true);
     countable.querySelectorAll('[data-reader-ui],[hidden]').forEach(el=>el.remove());
@@ -1108,10 +1128,11 @@ async function loadDocument(descriptor, options = {}) {
   } catch(error) {
     if (loadId !== state.loadId || error.name === 'AbortError') return false;
     setBusy(false);
-    const detail = error instanceof TypeError ? 'The source could not be reached from this browser. This may be a network, privacy, or cross-origin restriction.' : error.message;
-    showError(`${detail} Open a downloaded .md file to read locally.`,true);
+    const detail = error instanceof TypeError ? 'The text could not be reached from this browser. This may be a network, privacy, or cross-origin restriction.' : error.message;
+    // Published texts come through Reader's own cache, so a retry is the useful advice.
+    showError(`${detail} ${descriptor.kind==='catalog' ? 'Try again in a moment.' : 'You can also open a downloaded Markdown file.'}`,true);
     $('source-status').textContent=state.current ? 'Previous manuscript kept' : 'Source unavailable';
-    announce('The manuscript could not be loaded. You can open a local Markdown file.');
+    announce('The text could not be loaded.');
     state.retryDescriptor=descriptor;
     return false;
   }
