@@ -12,12 +12,12 @@ export function manuscript(side) {
   for (let c = 0; c < 6; c++) {
     const pairs = [];
     for (let n = c * 20 + 1; n <= c * 20 + 20; n++) {
-      const body = source ? `ཚིག་${n} དང་པོ། ཚིག་གཉིས་པ། ཚིག་གསུམ་པ།` : `Passage ${n} of the specimen sets out a long enough line of English that it wraps across the measure and gives the page real height to scroll through.`;
+      const body = source ? `ཚིག་${n} དང་པོ། ཚིག་གཉིས་པ། ཚིག་གསུམ་པ།` : `Passage ${n} of the specimen sets out a long enough line of English that it wraps across the measure and gives the page real height to scroll through.${n === 3 ? '[^n3]' : ''}`;
       pairs.push(`<!-- pair: ${id(n)}${source ? ' | format: prose' : ''} -->\n${body}\n<!-- /pair -->`);
     }
     chapters.push(`## ${source ? 'ལེའུ་' + (c + 1) : 'Chapter ' + (c + 1)}\n\n${pairs.join('\n\n')}`);
   }
-  return `${front}\n\n${chapters.join('\n\n')}`;
+  return `${front}\n\n${chapters.join('\n\n')}${source ? '' : '\n\n[^n3]: A note on passage three.'}`;
 }
 export const URL_PATH = '/?work=place-text&file=paired%2Ftranslation.md';
 export async function setup(page) {

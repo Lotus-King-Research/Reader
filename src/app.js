@@ -1276,21 +1276,28 @@ async function loadDocument(descriptor, options = {}) {
     if (options.updateURL !== false) updateLocation(candidate,'',false);
     state.loadedFromURL=true;
     const resumable = position && position.progress > .025 && position.progress < .985 && candidate.kind !== 'specimen';
-    if (requestedHash) {
+    const target = requestedHash ? resolveTarget(requestedHash) : '';
+    let missing = '';
+    if (requestedHash && !target) { missing=requestedHash.replace(/^#/,''); try { missing=decodeURIComponent(missing); } catch {} }
+    if (target) {
       requestAnimationFrame(() => {
-        goToHash(requestedHash,false); state.restoring=false; updateProgress(); state.place=placeAtReadingLine();
+        goToHash(requestedHash,false); washPassage($(target));
+        state.restoring=false; updateProgress(); state.place=placeAtReadingLine();
         if (resumable && Math.abs(position.progress-state.progress)>.02) {
           state.holdPlace={y:window.scrollY};
           notify('Opened at the linked passage.','Return to your place',() => restorePosition(position),10000);
         }
       });
     } else {
+      // A link to a passage this edition lacks falls back to the reader's own place.
       state.restoring=false; updateProgress();
+      const absent = missing ? `${missing} is not in this edition. ` : '';
       if (resumable) requestAnimationFrame(() => {
         if (loadId!==state.loadId) return;
         restorePosition(position);
-        notify(position.label ? `Back at ${position.label}.` : 'Back where you left off.','Start from the beginning',() => { window.scrollTo({top:0,behavior:'instant'}); savePosition(true); },6000);
+        notify(absent+(position.label ? `Back at ${position.label}.` : 'Back where you left off.'),'Start from the beginning',() => { window.scrollTo({top:0,behavior:'instant'}); savePosition(true); },absent ? 9000 : 6000);
       });
+      else if (absent) notify(absent+'The text opens at the beginning.','',null,9000);
     }
     syncSwitchedControl(); syncSourceHint();
     announce(`${shortTitle} opened. ${state.headings.length} sections.${restoredSwitches ? ` ${restoredSwitches} passage${restoredSwitches===1?'':'s'} in ${sourceLanguageLabel()}, as you left ${restoredSwitches===1?'it':'them'}.` : ''}`);
@@ -1451,6 +1458,11 @@ function syncHash() {
   const current=location.hash.replace(/^#/,'');
   if (current===hash || hash && resolveTarget(current)===resolveTarget(hash)) return;
   try { const url=new URL(location.href); url.hash=hash; history.replaceState(history.state,'',url); } catch (_) {}
+}
+function washPassage(el) {
+  const target=el?.closest?.('.parallel-section') || el; if (!target) return;
+  target.classList.remove('arrival-wash'); void target.offsetWidth; target.classList.add('arrival-wash');
+  target.addEventListener('animationend',()=>target.classList.remove('arrival-wash'),{once:true});
 }
 function goToHash(hash, update=true) {
   const id=resolveTarget(hash);
@@ -1732,7 +1744,79 @@ function handleManuscriptClick(e) {
 }
 $('manuscript').addEventListener('click',handleManuscriptClick);
 
-let selectedPassages=[],selectedCopy='',selectionLanguage=false,selectionScroll=0,menuReturn=null;
+let selectedPassages=[],selectedPairs=[],selectedCopy='',selectedHTML='',selectionLanguage=false,selectionScroll=0,menuReturn=null;
+const dockedMenu=()=>matchMedia('(hover: none)').matches;
+// What a reader sees, without note markers, section links or interface labels.
+// Editorial brackets are authored text, so they return even where the page hides them.
+function cleanFragment(fragment) {
+  fragment.querySelectorAll('.reader-note-marker,.section-link,.footnote-back,[data-reader-ui],.footnote-ref').forEach(el=>el.remove());
+  fragment.querySelectorAll('.ap-br').forEach(el=>el.replaceWith(el.textContent));
+  fragment.querySelectorAll('[hidden]').forEach(el=>el.remove());
+  return fragment;
+}
+function renderClipboard(fragment) {
+  const box=document.createElement('div');box.setAttribute('aria-hidden','true');box.style.cssText='position:fixed;left:-10000px;top:0;width:640px';
+  box.append(fragment);document.body.append(box);
+  const text=box.innerText.replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+  box.querySelectorAll('*').forEach(el=>{for(const name of [...el.getAttributeNames()])if(name!=='lang' && name!=='href')el.removeAttribute(name);});
+  const html=box.innerHTML;box.remove();return {text,html};
+}
+function passageClip(pair,side=pair.sourceVisible?'source':'english') {
+  const clone=pair[side].cloneNode(true);clone.removeAttribute('hidden');
+  const fragment=document.createDocumentFragment();fragment.append(clone);return renderClipboard(cleanFragment(fragment));
+}
+async function writeClipboard(plain,html='') {
+  if (html && window.ClipboardItem && navigator.clipboard?.write) {
+    try { await navigator.clipboard.write([new ClipboardItem({'text/plain':new Blob([plain],{type:'text/plain'}),'text/html':new Blob([html],{type:'text/html'})})]); return; } catch {}
+  }
+  if (navigator.clipboard?.writeText) { try { await navigator.clipboard.writeText(plain); return; } catch {} }
+  const listener=event=>{event.clipboardData.setData('text/plain',plain);if(html)event.clipboardData.setData('text/html',html);event.preventDefault();};
+  document.addEventListener('copy',listener);const ok=document.execCommand('copy');document.removeEventListener('copy',listener);
+  if (!ok) throw new Error('Copy unavailable');
+}
+// Pair IDs are not in reading order, so a range is named by its first and last passage.
+function citedPlace(pairs) {
+  const ids=pairs.map(pair=>hashFor(pair.section)).filter(Boolean);
+  if (ids.length) return {label:ids.length===1 ? ids[0] : ids[0]+'–'+ids[ids.length-1],hash:ids[0]};
+  const heading=activeLocation();return {label:heading ? navLabel(heading.text) : '',hash:heading?.id || ''};
+}
+function placeURL(hash) { const url=new URL(location.href);url.hash=hash || '';return url.href; }
+function editionLine(entry=state.current) {
+  const m=entry?.metadata || {}, parts=[];
+  if (m['paired-edition']) parts.push('paired edition '+m['paired-edition']);
+  if (m['translation-edition']) parts.push('translation '+m['translation-edition']);
+  if (m['source-edition']) parts.push('source '+m['source-edition']);
+  if (!parts.length && workIdentity(entry).edition) parts.push('edition '+workIdentity(entry).edition);
+  return parts.join(' · ');
+}
+// A citation carries the selected words, the same passages in the other language,
+// the work, the passage IDs and the edition, as plain text and as rich text.
+function buildCitation() {
+  const entry=state.current, identity=workIdentity(entry), title=identity.work || readingLabel(entry), original=identity.chinese;
+  const place=citedPlace(selectedPairs), url=linkable() ? placeURL(place.hash) : '', edition=editionLine();
+  const inSource=selectedPairs.length>0 && selectedPairs.every(pair=>pair.sourceVisible);
+  const other=selectedPairs.filter(pair=>!pair.emptySource).map(pair=>passageClip(pair,inSource?'english':'source'));
+  const quoted=inSource ? selectedCopy : '“'+selectedCopy+'”';
+  const credit=[title+(original ? ` (${original})` : ''),place.label].filter(Boolean).join(', ')+'.';
+  const plain=[quoted,...(other.length ? [other.map(item=>item.text).join('\n\n')] : []),'— '+[credit,edition ? edition.charAt(0).toUpperCase()+edition.slice(1)+'.' : '',url].filter(Boolean).join(' ')].join('\n\n');
+  const root=document.createElement('div');
+  const first=document.createElement('blockquote');first.lang=inSource ? (entry.sourceLanguage || 'bo') : 'en';first.innerHTML=selectedHTML || '';if(!selectedHTML)first.textContent=selectedCopy;root.append(first);
+  if (other.length) { const second=document.createElement('blockquote');second.lang=inSource ? 'en' : (entry.sourceLanguage || 'bo');second.innerHTML=other.map(item=>item.html).join('');root.append(second); }
+  const line=document.createElement('p');line.append('— ');const cite=document.createElement('cite');cite.textContent=title;line.append(cite);
+  if (original) { const span=document.createElement('span');span.lang=entry.sourceLanguage || 'bo';span.textContent=original;line.append(' (',span,')'); }
+  line.append((place.label ? ', '+place.label : '')+'.');
+  if (edition) line.append(' '+edition.charAt(0).toUpperCase()+edition.slice(1)+'.');
+  if (url) { const link=document.createElement('a');link.href=url;link.textContent=url;line.append(' ',link); }
+  root.append(line);
+  return {plain,html:root.innerHTML,url,label:place.label,title};
+}
+function correctionURL() {
+  const repository=state.current?.kind==='catalog' ? catalog.get(state.current.catalogId)?.repository : '';
+  if (!repository || !/^[\w.-]+\/[\w.-]+$/.test(repository)) return '';
+  const place=citedPlace(selectedPairs), edition=editionLine();
+  const body=[`Passage: ${place.label || 'unknown'}`,edition ? `Edition: ${edition}` : '',linkable() ? `Link: ${placeURL(place.hash)}` : '','','Text as shown:','',selectedCopy.split('\n').map(line=>'> '+line).join('\n'),'','Suggested correction:',''].filter((line,index,lines)=>line!=='' || lines[index-1]!=='' ).join('\n');
+  return `https://github.com/${repository}/issues/new?title=${encodeURIComponent('Correction: '+(place.label || 'passage'))}&body=${encodeURIComponent(body.slice(0,6000))}`;
+}
 function activePair() {
   const pairs=state.parallel?.pairs, sections=state.parallel?.sections; if (!pairs?.length) return null;
   let section=placeAtReadingLine()?.el?.closest('.parallel-section');
@@ -1744,7 +1828,6 @@ function activePair() {
   }
   return pairs.find(pair=>pair.section===section) || null;
 }
-function passageText(pair) { return (pair.sourceVisible ? pair.source : pair.english).innerText.trim(); }
 function toggleActivePassage() {
   if (state.view!=='reading') return;
   const pair=activePair();
@@ -1758,15 +1841,20 @@ function showSelectionMenu(x,y,focus=false) {
   const selection=window.getSelection();if(!selection || selection.isCollapsed || !selection.rangeCount)return false;
   const range=selection.getRangeAt(0),article=$('manuscript');
   if(!article.contains(range.startContainer) || !article.contains(range.endContainer))return false;
-  const text=selection.toString();if(!text.trim())return false;
-  menuReturn=null;return openPassageMenu(state.parallel?.pairsForRange(range) || [],text,x,y,focus);
+  if(!selection.toString().trim())return false;
+  const clip=renderClipboard(cleanFragment(range.cloneContents()));
+  menuReturn=null;return openPassageMenu(state.parallel?.pairsForRange(range) || [],clip,x,y,focus);
 }
-function openPassageMenu(pairs,text,x,y,focus=false) {
-  selectedCopy=text;selectedPassages=pairs.filter(pair=>!pair.emptySource);
+function openPassageMenu(pairs,clip,x,y,focus=false) {
+  selectedCopy=clip.text;selectedHTML=clip.html;selectedPairs=pairs;selectedPassages=pairs.filter(pair=>!pair.emptySource);
+  $('selection-link').hidden=!linkable();$('selection-share').hidden=!(dockedMenu() && navigator.share && linkable());
+  $('selection-correction').hidden=!correctionURL();
   selectionLanguage=selectedPassages.length>0 && !selectedPassages.every(pair=>pair.sourceVisible);
   const language=$('selection-language');language.hidden=!selectedPassages.length;language.textContent='Show '+(selectionLanguage?sourceLanguageLabel():'English');
-  selectionScroll=scrollY;const menu=$('selection-menu');menu.hidden=false;menu.style.left='0px';menu.style.top='0px';
-  const bounds=menu.getBoundingClientRect();menu.style.left=Math.max(8,Math.min(x,innerWidth-bounds.width-8))+'px';menu.style.top=Math.max(8,Math.min(y,innerHeight-bounds.height-8))+'px';
+  selectionScroll=scrollY;const menu=$('selection-menu'),wasHidden=menu.hidden;menu.hidden=false;
+  // On touch screens the menu docks above the footer, clear of the system's own selection callout.
+  if(dockedMenu()){menu.style.left='';menu.style.top='';if(wasHidden)announce('Selection actions are above the footer.');}
+  else{menu.style.left='0px';menu.style.top='0px';const bounds=menu.getBoundingClientRect();menu.style.left=Math.max(8,Math.min(x,innerWidth-bounds.width-8))+'px';menu.style.top=Math.max(8,Math.min(y,innerHeight-bounds.height-8))+'px';}
   if(focus)$('selection-copy').focus({preventScroll:true});return true;
 }
 $('manuscript').addEventListener('contextmenu',event=>{
@@ -1780,7 +1868,7 @@ document.addEventListener('keydown',event=>{
     const pair=state.view==='reading' ? activePair() : null;
     if(pair){
       event.preventDefault();const box=pair.section.getBoundingClientRect();menuReturn=pair.section;
-      openPassageMenu([pair],passageText(pair),box.left,Math.max(box.top,READING_LINE)+4,true);
+      openPassageMenu([pair],passageClip(pair),box.left,Math.max(box.top,READING_LINE)+4,true);
       announce('Passage menu.');
     }
   }
@@ -1797,16 +1885,40 @@ $('selection-language').addEventListener('click',()=>{
   announce((selectionLanguage?sourceLanguageLabel():'English')+' shown for the selected passage'+(pairs.length===1?'': 's')+'.');
   if(menuReturn){menuReturn.setAttribute('tabindex','-1');menuReturn.focus({preventScroll:true});menuReturn=null;}
 });
-$('selection-copy').addEventListener('click',async()=>{
-  const text=selectedCopy;closeSelectionMenu();
-  try {
-    if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(text);
-    else {const area=document.createElement('textarea');area.value=text;area.style.cssText='position:fixed;opacity:0';document.body.append(area);area.select();if(!document.execCommand('copy'))throw new Error('Copy unavailable');area.remove();}
-    announce('Copied.');
-  } catch {notify('Copy was unavailable. Use your browser’s Copy command.');}
+function menuDone() { const target=menuReturn;closeSelectionMenu();if(target){target.setAttribute('tabindex','-1');target.focus({preventScroll:true});menuReturn=null;} }
+async function copyFromMenu(plain,html,message) {
+  menuDone();
+  try { await writeClipboard(plain,html); announce(message); if (message!=='Copied.') notify(message); }
+  catch { notify('Copy was unavailable. Use your browser’s Copy command.'); }
+}
+$('selection-copy').addEventListener('click',()=>copyFromMenu(selectedCopy,selectedHTML,'Copied.'));
+$('selection-cite').addEventListener('click',()=>{ const cite=buildCitation(); copyFromMenu(cite.plain,cite.html,'Copied with citation.'); });
+$('selection-link').addEventListener('click',()=>{ const place=citedPlace(selectedPairs), url=placeURL(place.hash); copyFromMenu(url,`<a href="${url.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}">${(place.label || url).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</a>`,'Link copied.'); });
+$('selection-share').addEventListener('click',async()=>{
+  const cite=buildCitation();menuDone();
+  try { await navigator.share({title:cite.title,text:(selectedPairs.every(pair=>pair.sourceVisible) && selectedPairs.length ? selectedCopy : '“'+selectedCopy+'”')+' — '+cite.title+(cite.label ? ', '+cite.label : ''),url:cite.url}); }
+  catch (error) { if (error?.name!=='AbortError') notify('Sharing was unavailable.'); }
+});
+$('selection-correction').addEventListener('click',()=>{ const url=correctionURL();menuDone();if(url)window.open(url,'_blank','noopener,noreferrer'); });
+// The browser's own Copy also leaves note markers and section links behind.
+$('manuscript').addEventListener('copy',event=>{
+  const selection=window.getSelection();if(!selection?.rangeCount || selection.isCollapsed || !event.clipboardData)return;
+  const range=selection.getRangeAt(0),raw=range.cloneContents();
+  if(!$('manuscript').contains(range.commonAncestorContainer) && !$('manuscript').contains(range.startContainer))return;
+  if(!raw.querySelector('.reader-note-marker,.section-link,.footnote-back,[data-reader-ui],.ap-br'))return;
+  const clip=renderClipboard(cleanFragment(raw));event.clipboardData.setData('text/plain',clip.text);event.clipboardData.setData('text/html',clip.html);event.preventDefault();
 });
 document.addEventListener('pointerdown',event=>{if(!$('selection-menu').contains(event.target))closeSelectionMenu();});
-window.addEventListener('scroll',()=>{if(Math.abs(scrollY-selectionScroll)>1)closeSelectionMenu();},{passive:true});
+window.addEventListener('scroll',()=>{if(!dockedMenu() && Math.abs(scrollY-selectionScroll)>1)closeSelectionMenu();},{passive:true});
+let selectionTimer;
+document.addEventListener('selectionchange',()=>{
+  if(!dockedMenu() || state.view!=='reading')return;
+  clearTimeout(selectionTimer);selectionTimer=setTimeout(()=>{
+    const selection=window.getSelection();
+    if(selection?.rangeCount && !selection.isCollapsed && $('manuscript').contains(selection.anchorNode))showSelectionMenu(0,0);
+    else if(!$('selection-menu').contains(document.activeElement))closeSelectionMenu();
+  },150);
+});
 window.addEventListener('resize',closeSelectionMenu);
 $('selection-menu').addEventListener('keydown',event=>{
   if(event.key==='Escape'){event.preventDefault();closeSelectionMenu();$('manuscript').focus({preventScroll:true});return;}
