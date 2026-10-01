@@ -252,3 +252,13 @@ test('paired-text/2 hides the citation setting, which cannot change its layout',
   await expect(page.locator('#settings-dialog')).toBeVisible();
   await expect(page.locator('#auto-citations')).toBeHidden();
 });
+test('a misaligned pair names the passage, both IDs and lines, and links to the line on GitHub', async ({page}) => {
+  await fixture(page,{source:manuscript('source').replace('pair: V2-000005','pair: V2-999999')});
+  const status = page.locator('#paired-status');
+  await expect(status).toBeVisible();
+  await expect(status).toContainText('At passage 5');
+  await expect(status).toContainText('V2-000005'); await expect(status).toContainText('V2-999999');
+  const line = /translation line (\d+) has V2-000005/.exec(await status.textContent())?.[1];
+  expect(Number(line)).toBeGreaterThan(8);
+  await expect(status.getByRole('link')).toHaveAttribute('href',`https://github.com/${repository}/blob/main/${englishPath}?plain=1#L${line}`);
+});

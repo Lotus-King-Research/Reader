@@ -52,3 +52,15 @@ test('indented multi-paragraph notes keep all of their paragraphs', () => {
   const result = compile('Text.[^long]\n\n[^long]: First paragraph.\n\n    Second paragraph.\n');
   assert.match(result.html, /<li id="fn-1" data-note="1"><p>First paragraph\.<\/p>\n<p>Second paragraph\.<\/p>/);
 });
+
+test('pair markers record their file lines, and a repeated ID names both lines', () => {
+  const result = compile('---\nschema: paired-text/2\ntext-id: t\n---\n\n<!-- pair: A-1 | format: prose -->\nOne.\n<!-- /pair -->\n\n<!-- pair: A-1 | format: prose -->\nTwo.\n');
+  assert.deepEqual(Array.from(result.structures, pair => pair.line), [6, 10]); // Copied out of the vm realm.
+  assert.match(result.structureError, /Pair ID A-1 at line 10 repeats the pair at line 6\./);
+  assert.equal(result.structureErrorLine, 10);
+});
+
+test('an orphan closing marker reports its line', () => {
+  const result = compile('---\nschema: paired-text/2\n---\n<!-- /pair -->\n<!-- pair: B-1 | format: verse -->\nLine.\n');
+  assert.match(result.structureError, /closing pair marker at line 4 has no opening pair/);
+});
