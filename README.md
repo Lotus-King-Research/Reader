@@ -6,7 +6,7 @@ An English–Tibetan reader built from [Lukija](https://github.com/mikkokotila/L
 
 ## Publish a text
 
-On a feature branch, edit `public/reader-config.json`, add a work, and run `npm run build`. Open a pull request; merging it after validation publishes the work automatically. The first published work is [Dra Thal Gyur](https://github.com/Lotus-King-Translation/Dra-Thal-Gyur), using its paired Tibetan source and English translation.
+On a feature branch, edit `public/reader-config.json`, add a work, and run `npm run build`. Open a pull request; merging it after validation publishes the work automatically. The collection includes [Dra Thal Gyur](https://github.com/Lotus-King-Translation/Dra-Thal-Gyur) and [Togden Rinpoche’s Gongchig Commentary](https://github.com/Lotus-King-Translation/Togden-Gongchig-Drelwa), each loaded from its canonical paired Tibetan source and English translation. The commentary is an annotated working draft against a provisional source.
 
 ```json
 {
