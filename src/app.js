@@ -1862,12 +1862,10 @@ function handleManuscriptClick(e) {
   }
   if (a.dataset.footnote) {
     const note=$(href.slice(1)); if (!note) return;
-    e.preventDefault(); state.noteTarget=note.id;
-    $('note-title').textContent='Note '+a.dataset.footnote;
-    const clone=note.cloneNode(true); clone.querySelectorAll('.footnote-back').forEach(el=>el.remove());
-    clone.removeAttribute('id'); clone.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
-    $('note-content').replaceChildren(...clone.childNodes); openDialog('note-dialog'); return;
+    e.preventDefault(); showFootnote(note,'Note '+a.dataset.footnote); return;
   }
+  // Earlier translation notes open beside the text instead of replacing it.
+  if (LEGACY_NOTE.test(href)) { e.preventDefault(); showLegacyNote(href); return; }
   if (href.startsWith('#')) { e.preventDefault(); goToHash(href); return; }
   try {
     const url=new URL(href);
@@ -2073,9 +2071,101 @@ $('manuscript').addEventListener('touchend',()=>{
 $('book-header').addEventListener('click',handleManuscriptClick);
 $('note-jump').addEventListener('click',()=>{closeDialog('note-dialog');if(state.noteTarget)jumpTo(state.noteTarget,{flash:true});});
 $('note-content').addEventListener('click',e=>{
-  const a=e.target.closest('a[href^="#"]'); if (!a) return;
+  const a=e.target.closest('a[href]'); if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button!==0) return;
+  if (a.dataset.noteTarget) { e.preventDefault(); const note=$(a.dataset.noteTarget); if (note) showFootnote(note,'Note '+(note.dataset.note || '')); return; }
+  if (a.dataset.legacyNote) { e.preventDefault(); showLegacyNote(a.dataset.legacyNote); return; }
+  if (!a.getAttribute('href').startsWith('#')) return;
   e.preventDefault(); const hash=a.getAttribute('href');closeDialog('note-dialog');goToHash(hash);
 });
+const LEGACY_NOTE=/(?:^|\/)LEGACY-NOTES\.md#n-[^#?\s]+$/i;
+// Repository links read better as GitHub pages than as raw files.
+function githubPage(href) {
+  try { const url=new URL(href); if (url.hostname!=='raw.githubusercontent.com') return href; const [owner,repo,ref,...path]=url.pathname.slice(1).split('/'); return `https://github.com/${owner}/${repo}/blob/${ref}/${path.join('/')}${url.hash}`; }
+  catch { return href; }
+}
+// Golden-source notes are named by their label (G-U00002) in other files.
+function footnoteByLabel(label) {
+  for (const note of $('manuscript').querySelectorAll('.footnotes li[id]')) {
+    const lead=note.querySelector('strong')?.textContent.trim() || '';
+    if (lead.toUpperCase().startsWith(label.toUpperCase()+' ') || lead.toUpperCase()===label.toUpperCase()) return note;
+  }
+  return null;
+}
+function prepareNoteLinks(container) {
+  container.querySelectorAll('a[href]').forEach(link=>{
+    const href=link.getAttribute('href');
+    if (LEGACY_NOTE.test(href)) { link.dataset.legacyNote=href; link.removeAttribute('target'); return; }
+    const golden=/(?:^|\/)ENDNOTES\.md#(g-u\d+)$/i.exec(href), note=golden && footnoteByLabel(golden[1]);
+    if (note) { link.dataset.noteTarget=note.id; link.removeAttribute('target'); return; }
+    if (!href.startsWith('#')) link.href=githubPage(href);
+  });
+}
+// A golden critical note is a bold title, a comment and labelled fields. The comment and
+// its confidence stay in view; sources and review history sit in a disclosure.
+const NOTE_PRIMARY=/^(?:confidence \/ limit|earlier translation notes)$/i;
+function noteLabel(block) {
+  const first=block.firstElementChild;
+  if (block.tagName!=='P' || first?.tagName!=='STRONG') return '';
+  if ([...block.childNodes].find(node=>node.nodeType===1 || node.textContent.trim())!==first) return '';
+  const label=first.textContent.trim(); return label.endsWith(':') ? label.slice(0,-1).trim() : '';
+}
+function structureNote(container) {
+  const blocks=[...container.children], fields=blocks.filter(noteLabel);
+  if (fields.length<3) return '';
+  let title='';
+  const head=blocks[0];
+  if (head?.tagName==='P' && head.children.length===1 && head.firstElementChild.tagName==='STRONG' && head.textContent.trim()===head.firstElementChild.textContent.trim()) { title=head.textContent.trim(); head.remove(); }
+  const list=document.createElement('dl');
+  for (const block of fields) {
+    const label=noteLabel(block);
+    block.firstElementChild.remove(); if (block.firstChild?.nodeType===3) block.firstChild.data=block.firstChild.data.replace(/^\s+/,'');
+    if (NOTE_PRIMARY.test(label)) { block.classList.add('note-field'); block.prepend(textElement('span',label,'note-field-label')); continue; }
+    const value=document.createElement('dd'); value.append(...block.childNodes);
+    list.append(textElement('dt',label),value); block.remove();
+  }
+  if (list.children.length) { const details=document.createElement('details'); details.className='note-provenance'; details.append(textElement('summary','Sources and review'),list); container.append(details); }
+  return title;
+}
+function showNoteDialog(title,nodes,{target=null,source=''}={}) {
+  state.noteTarget=target;
+  const box=document.createElement('div'); box.append(...nodes);
+  const structured=structureNote(box); prepareNoteLinks(box);
+  $('note-title').textContent=structured || title;
+  $('note-content').replaceChildren(...box.childNodes); $('note-content').scrollTop=0;
+  $('note-jump').hidden=!target; $('note-source').hidden=!source; if (source) $('note-source').href=source;
+  openDialog('note-dialog');
+}
+function showFootnote(note,title) {
+  const clone=note.cloneNode(true); clone.querySelectorAll('.footnote-back').forEach(el=>el.remove());
+  clone.removeAttribute('id'); clone.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
+  showNoteDialog(title,[...clone.childNodes],{target:note.id});
+}
+const legacyFiles=new Map();
+async function showLegacyNote(href) {
+  let url; try { url=new URL(href,state.current?.sourceURL || location.href); } catch { return; }
+  const id=decodeURIComponent(url.hash.slice(1)), label=id.toUpperCase(), file=new URL(url.href); file.hash='';
+  showNoteDialog(label,[textElement('p','Opening the earlier note…','note-loading')],{source:githubPage(url.href)});
+  try {
+    if (!legacyFiles.has(file.href)) legacyFiles.set(file.href,fetchText(file.href).then(result=>parseMarkdown(typeof result==='string' ? result : result.text)).then(compiled=>safeDOM(compiled.html,file.href)));
+    const root=await legacyFiles.get(file.href), anchor=root.querySelector(`[id="${CSS.escape('md-'+id)}"]`);
+    if (!$('note-dialog').open || $('note-source').href!==githubPage(url.href)) return;
+    if (!anchor) { showNoteDialog(label,[textElement('p','This earlier note was not found in its file. It can still be read on GitHub.')],{source:githubPage(url.href)}); return; }
+    // The note runs from its anchor to the next note's anchor.
+    const start=anchor.closest('p') && !anchor.closest('p').textContent.trim() ? anchor.closest('p') : anchor;
+    const nodes=[]; let title=label;
+    for (let node=start.nextSibling; node; node=node.nextSibling) {
+      if (node.nodeType===3 && !node.textContent.trim()) continue;
+      if (node.nodeType===1 && (node.matches('h1,h2') && nodes.length || node.querySelector?.('a[id]:not([href])') && !node.textContent.trim())) break;
+      if (node.nodeType===1 && /^H[1-3]$/.test(node.tagName) && !nodes.length) { title=node.textContent.replace(/§$/,'').trim(); continue; }
+      nodes.push(node.cloneNode(true));
+    }
+    nodes.forEach(node=>{ if (node.nodeType===1) { node.removeAttribute('id'); node.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id')); } });
+    showNoteDialog(title,nodes,{source:githubPage(url.href)});
+  } catch (error) {
+    legacyFiles.delete(file.href);
+    if ($('note-dialog').open) showNoteDialog(label,[textElement('p','The earlier note could not be reached just now. It can still be read on GitHub.')],{source:githubPage(url.href)});
+  }
+}
 
 function showSource() {
   if (!state.current) {

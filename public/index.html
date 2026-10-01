@@ -271,6 +271,16 @@ body[data-view="collection"] .reading-area{padding-top:28px}
 .focus-mode:not(.chrome-shown) .toolbar:not(:has(:focus-visible)){transform:translateY(-100%);opacity:0}
 .focus-mode:not(.chrome-shown) .reading-footer{transform:translateY(calc(100% - 3px))}
 .focus-mode:not(.chrome-shown) .reading-footer>:not(.progress-track){opacity:0}
+.note-source{font-size:12px;color:var(--red)}
+.note-field-label{display:block;font:11px/1.4 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+.note-provenance{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
+.note-provenance summary{cursor:pointer;font:12px/1.4 var(--sans);color:var(--red);padding:8px 0;min-height:44px;display:flex;align-items:center}
+.note-provenance dl{margin:6px 0 0;font-size:15px;line-height:1.65}
+.note-provenance dt{font:11px/1.4 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:12px}
+.note-provenance dd{margin:2px 0 0}
+/* Quoted readings are text, not code: they keep the reading type, Tibetan included. */
+.note-content code{font-family:var(--serif);font-size:1em;background:none;padding:0}
+.note-loading{color:var(--muted)}
 /* Interface labels. */
 .toolbar-text{display:none;font:12px/1 var(--sans);margin-left:7px}
 @media(min-width:1100px){.toolbar-text{display:inline}}
@@ -365,7 +375,7 @@ body[data-view="collection"] .reading-area{padding-top:28px}
 <dialog id="library-dialog" aria-labelledby="library-title"><div class="dialog-head"><div><h2 id="library-title">Open your own text</h2></div><button class="icon-button" data-close aria-label="Close library"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="dialog-body"><div class="library-tools"><button class="primary" id="import-library"><svg class="icon"><use href="#i-upload"/></svg>Choose files</button><button class="secondary" id="refresh-library" hidden><svg class="icon"><use href="#i-refresh"/></svg>Refresh published collection</button></div><p class="library-status" id="library-status">Choose a Markdown or text file, paste text, or open a public text URL.</p><ul class="library-list" id="library-list"></ul><div class="library-foot"><label class="field-label" for="url-input">Open a public text URL</label><form class="url-form" id="url-form"><input type="url" id="url-input" placeholder="https://example.org/text.md" required spellcheck="false" autocomplete="off"><button type="submit" class="primary" id="url-submit">Open link</button></form><p class="dialog-error" id="library-error" hidden role="alert"></p><details class="paste-details"><summary>Paste text</summary><label class="sr-only" for="paste-input">Markdown text</label><textarea id="paste-input" placeholder="# Your text&#10;&#10;Paste the Markdown here…" spellcheck="false"></textarea><button class="secondary" id="paste-button">Read this text <svg class="icon"><use href="#i-arrow"/></svg></button></details><p class="privacy-note">Files and pasted text stay on this device.</p></div></div></dialog>
 <dialog class="search-dialog" id="search-dialog" aria-label="Search this text"><div class="search-input-wrap"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><label for="search-input" class="sr-only">Search English or Tibetan</label><input id="search-input" type="text" placeholder="Find a word, a passage, a thought…" autocomplete="off" spellcheck="false"><button class="icon-button" data-close aria-label="Close search"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="search-scope"><span id="search-scope">In this volume</span><span id="search-count" aria-live="polite">Type to search</span></div><ul class="search-results" id="search-results"></ul><div class="search-empty" id="search-empty">Search this text in English or Tibetan.</div></dialog>
 <dialog class="settings-dialog" id="settings-dialog" aria-labelledby="settings-title"><div class="dialog-head"><div><p class="dialog-kicker">Make yourself at home</p><h2 id="settings-title">The reading page</h2></div><button class="icon-button" data-close aria-label="Close appearance settings"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="dialog-body"><div class="settings-group"><span class="field-label">Page palette</span><div class="theme-options" role="group" aria-label="Page palette"><button class="theme-choice" data-theme="auto" aria-pressed="true"><span class="theme-swatch" aria-hidden="true"></span>Auto</button><button class="theme-choice" data-theme="paper" aria-pressed="false"><span class="theme-swatch" aria-hidden="true"></span>Paper</button><button class="theme-choice" data-theme="mist" aria-pressed="false"><span class="theme-swatch" aria-hidden="true"></span>Mist</button><button class="theme-choice" data-theme="ink" aria-pressed="false"><span class="theme-swatch" aria-hidden="true"></span>Ink</button></div></div><div class="settings-group"><div class="settings-row"><label for="font-size">Text size</label><output id="size-value" for="font-size">20 px</output></div><input id="font-size" type="range" min="16" max="28" step="1" value="20"><div class="settings-row muted"><span style="font:15px var(--serif)">Aa</span><span style="font:25px var(--serif)">Aa</span></div></div><div class="settings-group"><div class="settings-row"><label for="tibetan-size">Tibetan size</label><output id="tibetan-value" for="tibetan-size">100%</output></div><input id="tibetan-size" type="range" min="90" max="140" step="5" value="100"></div><div class="settings-group"><span class="field-label">Line length</span><div class="segmented" role="group" aria-label="Line length"><button data-measure="620" aria-pressed="false">Intimate</button><button data-measure="720" aria-pressed="true">Balanced</button><button data-measure="840" aria-pressed="false">Spacious</button></div></div><div class="settings-group"><div class="settings-row"><label for="line-height">Line spacing</label><output id="leading-value" for="line-height">1.88</output></div><input id="line-height" type="range" min="1.5" max="2.2" step="0.02" value="1.88"></div><div class="settings-group"><label class="citation-setting" for="auto-citations"><input type="checkbox" id="auto-citations" checked><span><strong>Separate cited passages</strong><small>Recognize attributed quotations in plain paragraphs. Unclear boundaries stay as written. The original Markdown is never changed.</small></span></label></div><div class="settings-group switched-group" id="switched-group" hidden><p id="switched-count"></p><button class="text-button" id="show-all-english">Show all in English</button></div><div class="settings-group"><label class="citation-setting" for="single-key-shortcuts"><input type="checkbox" id="single-key-shortcuts" checked><span><strong>Single-key shortcuts</strong><small>/ search · T switch the passage’s language · B bookmark · F focus · L library. Turn off if they interfere with speech input or other tools.</small></span></label></div><p class="settings-preview">A little space for the words.<br><span lang="bo" style="font-family:var(--tibetan)">བོད་ཡིག</span></p><div class="settings-foot"><button class="text-button" id="reset-settings">Restore defaults</button><button class="text-button" id="demo-button">See the typography specimen</button></div></div></dialog>
-<dialog class="note-dialog" id="note-dialog" aria-labelledby="note-title"><div class="dialog-head"><h2 id="note-title">Note</h2><button class="icon-button" data-close aria-label="Close footnote"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="note-content" id="note-content"></div><div class="note-bottom"><button id="note-jump">Read in the endnotes <span aria-hidden="true">↗</span></button></div></dialog>
+<dialog class="note-dialog" id="note-dialog" aria-labelledby="note-title"><div class="dialog-head"><h2 id="note-title">Note</h2><button class="icon-button" data-close aria-label="Close footnote"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="note-content" id="note-content"></div><div class="note-bottom"><button id="note-jump">Read in the endnotes <span aria-hidden="true">↗</span></button><a id="note-source" class="note-source" hidden target="_blank" rel="noopener noreferrer">Read on GitHub <span aria-hidden="true">↗</span></a></div></dialog>
 <dialog class="source-dialog" id="source-dialog" aria-labelledby="source-title"><div class="dialog-head"><div><p class="dialog-kicker">The files, unchanged</p><h2 id="source-title">Download &amp; export</h2></div><button class="icon-button" data-close aria-label="Close download and export"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="dialog-body"><p class="dialog-copy" id="source-description">The original Markdown is preserved exactly as loaded.</p><div class="source-actions"><a class="secondary" id="github-link" hidden target="_blank" rel="noopener noreferrer">View on GitHub <svg class="icon"><use href="#i-external"/></svg></a><button class="secondary" id="download-markdown" disabled><svg class="icon"><use href="#i-download"/></svg>Save Markdown</button><button class="primary" id="export-reader" disabled><svg class="icon"><use href="#i-book"/></svg>Save offline reading copy</button><button class="primary" id="export-epub" disabled><svg class="icon"><use href="#i-download"/></svg>Export EPUB</button><button class="secondary" id="print-button" disabled>Print</button></div><label class="field-label" for="source-textarea">Original Markdown (read-only)</label><textarea id="source-textarea" class="source-textarea" readonly spellcheck="false"></textarea><p class="privacy-note">An offline reading copy embeds this text inside a new HTML file. It does not include linked images, other volumes, or your reading history. Keep private texts private when sharing the copy.</p></div></dialog>
 <input id="file-input" type="file" multiple accept=".md,.markdown,.txt,text/markdown,text/plain" hidden>
 <div class="toast" id="toast" role="status" hidden><span id="toast-text"></span><button id="toast-action" hidden></button></div>
@@ -6142,12 +6152,10 @@ function handleManuscriptClick(e) {
   }
   if (a.dataset.footnote) {
     const note=$(href.slice(1)); if (!note) return;
-    e.preventDefault(); state.noteTarget=note.id;
-    $('note-title').textContent='Note '+a.dataset.footnote;
-    const clone=note.cloneNode(true); clone.querySelectorAll('.footnote-back').forEach(el=>el.remove());
-    clone.removeAttribute('id'); clone.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
-    $('note-content').replaceChildren(...clone.childNodes); openDialog('note-dialog'); return;
+    e.preventDefault(); showFootnote(note,'Note '+a.dataset.footnote); return;
   }
+  // Earlier translation notes open beside the text instead of replacing it.
+  if (LEGACY_NOTE.test(href)) { e.preventDefault(); showLegacyNote(href); return; }
   if (href.startsWith('#')) { e.preventDefault(); goToHash(href); return; }
   try {
     const url=new URL(href);
@@ -6353,9 +6361,101 @@ $('manuscript').addEventListener('touchend',()=>{
 $('book-header').addEventListener('click',handleManuscriptClick);
 $('note-jump').addEventListener('click',()=>{closeDialog('note-dialog');if(state.noteTarget)jumpTo(state.noteTarget,{flash:true});});
 $('note-content').addEventListener('click',e=>{
-  const a=e.target.closest('a[href^="#"]'); if (!a) return;
+  const a=e.target.closest('a[href]'); if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button!==0) return;
+  if (a.dataset.noteTarget) { e.preventDefault(); const note=$(a.dataset.noteTarget); if (note) showFootnote(note,'Note '+(note.dataset.note || '')); return; }
+  if (a.dataset.legacyNote) { e.preventDefault(); showLegacyNote(a.dataset.legacyNote); return; }
+  if (!a.getAttribute('href').startsWith('#')) return;
   e.preventDefault(); const hash=a.getAttribute('href');closeDialog('note-dialog');goToHash(hash);
 });
+const LEGACY_NOTE=/(?:^|\/)LEGACY-NOTES\.md#n-[^#?\s]+$/i;
+// Repository links read better as GitHub pages than as raw files.
+function githubPage(href) {
+  try { const url=new URL(href); if (url.hostname!=='raw.githubusercontent.com') return href; const [owner,repo,ref,...path]=url.pathname.slice(1).split('/'); return `https://github.com/${owner}/${repo}/blob/${ref}/${path.join('/')}${url.hash}`; }
+  catch { return href; }
+}
+// Golden-source notes are named by their label (G-U00002) in other files.
+function footnoteByLabel(label) {
+  for (const note of $('manuscript').querySelectorAll('.footnotes li[id]')) {
+    const lead=note.querySelector('strong')?.textContent.trim() || '';
+    if (lead.toUpperCase().startsWith(label.toUpperCase()+' ') || lead.toUpperCase()===label.toUpperCase()) return note;
+  }
+  return null;
+}
+function prepareNoteLinks(container) {
+  container.querySelectorAll('a[href]').forEach(link=>{
+    const href=link.getAttribute('href');
+    if (LEGACY_NOTE.test(href)) { link.dataset.legacyNote=href; link.removeAttribute('target'); return; }
+    const golden=/(?:^|\/)ENDNOTES\.md#(g-u\d+)$/i.exec(href), note=golden && footnoteByLabel(golden[1]);
+    if (note) { link.dataset.noteTarget=note.id; link.removeAttribute('target'); return; }
+    if (!href.startsWith('#')) link.href=githubPage(href);
+  });
+}
+// A golden critical note is a bold title, a comment and labelled fields. The comment and
+// its confidence stay in view; sources and review history sit in a disclosure.
+const NOTE_PRIMARY=/^(?:confidence \/ limit|earlier translation notes)$/i;
+function noteLabel(block) {
+  const first=block.firstElementChild;
+  if (block.tagName!=='P' || first?.tagName!=='STRONG') return '';
+  if ([...block.childNodes].find(node=>node.nodeType===1 || node.textContent.trim())!==first) return '';
+  const label=first.textContent.trim(); return label.endsWith(':') ? label.slice(0,-1).trim() : '';
+}
+function structureNote(container) {
+  const blocks=[...container.children], fields=blocks.filter(noteLabel);
+  if (fields.length<3) return '';
+  let title='';
+  const head=blocks[0];
+  if (head?.tagName==='P' && head.children.length===1 && head.firstElementChild.tagName==='STRONG' && head.textContent.trim()===head.firstElementChild.textContent.trim()) { title=head.textContent.trim(); head.remove(); }
+  const list=document.createElement('dl');
+  for (const block of fields) {
+    const label=noteLabel(block);
+    block.firstElementChild.remove(); if (block.firstChild?.nodeType===3) block.firstChild.data=block.firstChild.data.replace(/^\s+/,'');
+    if (NOTE_PRIMARY.test(label)) { block.classList.add('note-field'); block.prepend(textElement('span',label,'note-field-label')); continue; }
+    const value=document.createElement('dd'); value.append(...block.childNodes);
+    list.append(textElement('dt',label),value); block.remove();
+  }
+  if (list.children.length) { const details=document.createElement('details'); details.className='note-provenance'; details.append(textElement('summary','Sources and review'),list); container.append(details); }
+  return title;
+}
+function showNoteDialog(title,nodes,{target=null,source=''}={}) {
+  state.noteTarget=target;
+  const box=document.createElement('div'); box.append(...nodes);
+  const structured=structureNote(box); prepareNoteLinks(box);
+  $('note-title').textContent=structured || title;
+  $('note-content').replaceChildren(...box.childNodes); $('note-content').scrollTop=0;
+  $('note-jump').hidden=!target; $('note-source').hidden=!source; if (source) $('note-source').href=source;
+  openDialog('note-dialog');
+}
+function showFootnote(note,title) {
+  const clone=note.cloneNode(true); clone.querySelectorAll('.footnote-back').forEach(el=>el.remove());
+  clone.removeAttribute('id'); clone.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
+  showNoteDialog(title,[...clone.childNodes],{target:note.id});
+}
+const legacyFiles=new Map();
+async function showLegacyNote(href) {
+  let url; try { url=new URL(href,state.current?.sourceURL || location.href); } catch { return; }
+  const id=decodeURIComponent(url.hash.slice(1)), label=id.toUpperCase(), file=new URL(url.href); file.hash='';
+  showNoteDialog(label,[textElement('p','Opening the earlier note…','note-loading')],{source:githubPage(url.href)});
+  try {
+    if (!legacyFiles.has(file.href)) legacyFiles.set(file.href,fetchText(file.href).then(result=>parseMarkdown(typeof result==='string' ? result : result.text)).then(compiled=>safeDOM(compiled.html,file.href)));
+    const root=await legacyFiles.get(file.href), anchor=root.querySelector(`[id="${CSS.escape('md-'+id)}"]`);
+    if (!$('note-dialog').open || $('note-source').href!==githubPage(url.href)) return;
+    if (!anchor) { showNoteDialog(label,[textElement('p','This earlier note was not found in its file. It can still be read on GitHub.')],{source:githubPage(url.href)}); return; }
+    // The note runs from its anchor to the next note's anchor.
+    const start=anchor.closest('p') && !anchor.closest('p').textContent.trim() ? anchor.closest('p') : anchor;
+    const nodes=[]; let title=label;
+    for (let node=start.nextSibling; node; node=node.nextSibling) {
+      if (node.nodeType===3 && !node.textContent.trim()) continue;
+      if (node.nodeType===1 && (node.matches('h1,h2') && nodes.length || node.querySelector?.('a[id]:not([href])') && !node.textContent.trim())) break;
+      if (node.nodeType===1 && /^H[1-3]$/.test(node.tagName) && !nodes.length) { title=node.textContent.replace(/§$/,'').trim(); continue; }
+      nodes.push(node.cloneNode(true));
+    }
+    nodes.forEach(node=>{ if (node.nodeType===1) { node.removeAttribute('id'); node.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id')); } });
+    showNoteDialog(title,nodes,{source:githubPage(url.href)});
+  } catch (error) {
+    legacyFiles.delete(file.href);
+    if ($('note-dialog').open) showNoteDialog(label,[textElement('p','The earlier note could not be reached just now. It can still be read on GitHub.')],{source:githubPage(url.href)});
+  }
+}
 
 function showSource() {
   if (!state.current) {
