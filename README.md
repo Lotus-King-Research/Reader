@@ -6,7 +6,7 @@ An English–Tibetan reader built from [Lukija](https://github.com/mikkokotila/L
 
 ## Publish a text
 
-Edit `public/reader-config.json`, add a work, run `npm run build`, and deploy. The first published work is [Dra Thal Gyur](https://github.com/Lotus-King-Translation/Dra-Thal-Gyur), using its paired Tibetan source and English translation.
+On a feature branch, edit `public/reader-config.json`, add a work, and run `npm run build`. Open a pull request; merging it after validation publishes the work automatically. The first published work is [Dra Thal Gyur](https://github.com/Lotus-King-Translation/Dra-Thal-Gyur), using its paired Tibetan source and English translation.
 
 ```json
 {
@@ -76,18 +76,22 @@ npm test
 
 Unit tests (`npm run test:unit`) cover the Markdown compiler’s linear parsing and the edge Worker. Browser tests cover desktop and phone layouts, the edge cache and its saved-copy notice, source verification, arbitrary filenames and nested collections, alignment, selection context menus, inline editions, loading progress, cancellation, failures, language tags, export, notes, and local imports. Test fixtures are synthetic. CI runs browser tests and validates the generated EPUBs using EPUBCheck 5.4.0. Locally, set `EPUBCHECK_JAR` and run `npm run test:epub` to perform the same EPUB validation.
 
-## Cloudflare deployment
+## Contributions and deployment
 
-The site uses [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/) with worker name `padma-reader` and custom domain `reader.padma.io`. Files in `public/` are served as static assets; only `/api/*` runs the Worker in `worker/`, which serves the configured manuscripts from the edge cache. On the first deploy Wrangler creates the `READER_CACHE` KV namespace for the saved copies, and a cron trigger refreshes them every 30 minutes so they stay current when nobody is reading. Single files need no GitHub credentials. To raise GitHub’s limit for directory listings, optionally add a token that can read public repositories with `npx wrangler secret put GITHUB_TOKEN`. Worker observability is disabled, so no request logs are kept.
+`main` is protected for everyone, including administrators. Changes must be made on a branch and opened as a pull request. The GitHub Actions `test` check must pass on an up-to-date branch, and review conversations must be resolved before merging. Force pushes and branch deletion are disabled. GitHub does not require a separate approving reviewer. Agents must obtain user approval before merging, as specified in `AGENTS.md`.
 
-```sh
-npm ci
-npx wrangler login
-npm run deploy
-```
+The required check runs the desktop and phone browser tests and validates generated EPUBs with EPUBCheck 5.4.0. Never bypass protection or push changes directly to `main`.
 
-The configuration declares the [Worker custom domain](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/). Wrangler creates the domain binding and certificate in the account that owns `padma.io`. Use existing authorized authentication or a deployment token; no credential is committed.
+Production uses Cloudflare Workers Builds with `Lotus-King-Research/Reader` connected to the existing `padma-reader` Worker at `reader.padma.io`. The connection must use these settings so a merge to `main` automatically builds and deploys production:
 
-For continuous deployment, either connect this repository in Cloudflare Workers Builds (branch `main`, build `npm run build`, deploy `npx wrangler deploy`) or enable the included GitHub Actions deployment job. The latter requires repository secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and variable `CLOUDFLARE_DEPLOY_ENABLED=true`. Do not copy local OAuth credentials into GitHub. Tests must pass before deployment. The initial CLI deployment does not automatically establish a Git integration.
+- Production branch: `main`
+- Root directory: `/`
+- Build command: `npm run build`
+- Deploy command: `npx wrangler deploy`
+- Production deployments enabled; builds on other branches disabled
+
+Cloudflare installs dependencies from the committed lockfile and manages the deployment credential. GitHub Actions performs validation only; no Cloudflare secret or local OAuth credential is copied into GitHub. There is one production deployment path, through the repository's Cloudflare build connection. Use Cloudflare's build history to inspect deployment status and logs. Routine releases must not be deployed manually from a local checkout.
+
+Cloudflare Workers Static Assets serves `public/`; `wrangler.jsonc` declares the Worker and existing custom domain. Only `/api/*` runs Worker code: the edge cache in `worker/`, which serves the configured manuscripts. The first deploy after this change creates the `READER_CACHE` KV namespace for the saved copies (the build's deployment credential must be allowed to create Workers KV namespaces), and a cron trigger refreshes those copies every 30 minutes so they stay current when nobody is reading. Single files need no GitHub credentials; to raise GitHub’s limit for directory listings, a `GITHUB_TOKEN` secret that can read public repositories can be added to the Worker in the Cloudflare dashboard. Worker observability is disabled, so no request logs are kept. Do not change deployment settings, disconnect the repository, or bypass the build workflow as part of routine feature work.
 
 Lukija's embedded Marked 4.0.19 parser retains its MIT notice. Publishing the reader assigns no license to source manuscripts.
