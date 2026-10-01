@@ -70,7 +70,7 @@ npm run dev
 npm test
 ```
 
-`public/index.html` contains the application shell. `src/catalog.js`, `src/parallel.js`, and `src/epub.js` are embedded by `scripts/build.mjs`, together with configuration and the Tibetan font. Commit source modules and built HTML together. `npm run serve` provides the local test server.
+`public/index.html` contains the application shell and styles. The reader application (`src/app.js`) and its engines (`src/catalog.js`, `src/parallel.js`, `src/epub.js`) are embedded by `scripts/build.mjs`, together with configuration and the Tibetan font. Edit the source modules, not their copies inside `public/index.html`, and commit source modules and built HTML together. `npm run serve` provides the local test server.
 
 Browser tests cover desktop and phone layouts, source verification, arbitrary filenames and nested collections, alignment, selection context menus, inline editions, loading progress, cancellation, failures, language tags, export, notes, and local imports. Test fixtures are synthetic. CI runs browser tests and validates the generated EPUBs using EPUBCheck 5.4.0. Locally, set `EPUBCHECK_JAR` and run `npm run test:epub` to perform the same EPUB validation.
 
