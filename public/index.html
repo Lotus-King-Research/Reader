@@ -176,6 +176,11 @@ html{scroll-padding-top:calc(var(--top) + 20px)}
 @media(max-width:600px){.work-original-title{font-size:28px}}
 /* Note markers: one style, tight to the word, never split at a hyphen. */
 .prose a.footnote-ref,.prose .legacy-note-ref{font:600 .62em/1 var(--sans);font-variant-numeric:tabular-nums lining-nums;letter-spacing:.02em;white-space:nowrap}
+/* Interface labels. */
+.toolbar-text{display:none;font:12px/1 var(--sans);margin-left:7px}
+@media(min-width:1100px){.toolbar-text{display:inline}}
+.settings-foot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px 20px}
+.collection-purpose{font:15px/1.65 var(--serif);color:var(--muted);margin:-6px 0 22px;max-width:36em}
 /* Provenance: one quiet line under the title. */
 .book-header .meta-row{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:flex-start;gap:.3em 1.2em;border:0;padding:0;margin:0 0 4px;font:12px/1.6 var(--sans);color:var(--muted)}
 .book-header .meta-left{gap:.3em 1.2em}
@@ -225,48 +230,47 @@ html{scroll-padding-top:calc(var(--top) + 20px)}
 <nav class="toc-wrap" aria-labelledby="toc-label"><ol class="toc" id="toc"></ol></nav>
 <div class="sidebar-bottom">
 <button class="side-action" id="resume-button" hidden><svg class="icon"><use href="#i-bookmark"/></svg><span>Return to bookmark</span></button>
-<button class="side-action" id="open-welcome"><svg class="icon"><use href="#i-book"/></svg><span>Open manuscript</span></button>
-<button class="side-action" id="source-button"><svg class="icon"><use href="#i-file"/></svg><span>Manuscript &amp; source</span><svg class="icon end"><use href="#i-external"/></svg></button>
-<button class="side-action" id="demo-button"><span class="type-icon" aria-hidden="true">Aa</span><span>Explore typography</span></button>
+<button class="side-action" id="open-welcome"><svg class="icon"><use href="#i-book"/></svg><span>Open your own text</span></button>
+<button class="side-action" id="source-button"><svg class="icon"><use href="#i-download"/></svg><span>Download &amp; export</span></button>
 
 </div>
 </aside>
 <div class="shell">
 <header class="toolbar">
 <div class="toolbar-left"><button class="icon-button mobile-menu" id="mobile-menu" aria-label="Open contents" aria-controls="sidebar" aria-expanded="false"><svg class="icon"><use href="#i-menu"/></svg></button><div class="toolbar-label"><span class="room-name" id="toolbar-room">Reader</span><span class="slash">/</span><span id="toolbar-volume">Collection</span></div><button class="stale-badge" id="stale-badge" type="button" hidden aria-describedby="revision-message"></button></div>
-<div class="toolbar-actions"><button class="icon-button" id="notes-toggle" hidden aria-label="Show endnotes" title="Show endnote links" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-note"/></svg></button><button class="icon-button search-trigger" id="search-trigger" aria-label="Search this text" title="Search this text (/)" aria-haspopup="dialog"><svg class="icon"><use href="#i-search"/></svg><span class="search-label">Search</span><kbd aria-hidden="true">/</kbd></button><span class="toolbar-divider" aria-hidden="true"></span><button class="icon-button" id="settings-trigger" aria-label="Reading appearance" title="Reading appearance" aria-haspopup="dialog"><span class="type-icon" aria-hidden="true">Aa</span></button><button class="icon-button" id="bookmark-button" aria-label="Bookmark this position" title="Bookmark this position (B)" aria-pressed="false"><svg class="icon"><use href="#i-bookmark"/></svg></button><button class="icon-button" id="focus-button" aria-label="Enter focus mode" title="Focus mode (F)" aria-pressed="false"><svg class="icon"><use href="#i-focus"/></svg></button></div>
+<div class="toolbar-actions"><button class="icon-button" id="notes-toggle" hidden aria-label="Show endnotes" title="Show endnote links" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-note"/></svg><span class="toolbar-text" aria-hidden="true">Notes</span></button><button class="icon-button search-trigger" id="search-trigger" aria-label="Search this text" title="Search this text (/)" aria-haspopup="dialog"><svg class="icon"><use href="#i-search"/></svg><span class="search-label">Search</span><kbd aria-hidden="true">/</kbd></button><span class="toolbar-divider" aria-hidden="true"></span><button class="icon-button" id="settings-trigger" aria-label="Reading appearance" title="Reading appearance" aria-haspopup="dialog"><span class="type-icon" aria-hidden="true">Aa</span></button><button class="icon-button" id="bookmark-button" aria-label="Bookmark this position" title="Bookmark this position (B)" aria-pressed="false"><svg class="icon"><use href="#i-bookmark"/></svg></button><button class="icon-button" id="focus-button" aria-label="Enter focus mode" title="Focus mode (F)" aria-pressed="false"><svg class="icon"><use href="#i-focus"/></svg></button></div>
 </header>
 <main class="reading-area" id="main-content" tabindex="-1">
-<div id="loading-panel" class="loading-panel" hidden role="status"><div class="loading-label"><span id="loading-text">Opening manuscript…</span><span id="loading-percent" aria-hidden="true">0%</span></div><div id="loading-progress" class="loading-track" role="progressbar" aria-label="Manuscript loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="loading-fill"></div></div></div>
+<div id="loading-panel" class="loading-panel" hidden role="status"><div class="loading-label"><span id="loading-text">Opening the text…</span><span id="loading-percent" aria-hidden="true">0%</span></div><div id="loading-progress" class="loading-track" role="progressbar" aria-label="Manuscript loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="loading-fill"></div></div></div>
 <div class="load-message revision-notice" id="revision-notice" hidden role="status"><p id="revision-message"></p><button id="revision-load">Load latest</button></div>
 <div class="load-message" id="load-message" hidden role="status"><p id="load-message-text"></p><button id="retry-button">Try again</button></div>
 <section id="welcome" aria-labelledby="collection-heading">
 
 <button class="continue-reading" id="continue-reading" hidden><span><span class="eyebrow">Continue reading</span><span id="continue-title"></span></span><svg class="icon"><use href="#i-arrow"/></svg></button>
-<section class="collection-section" id="session-section" aria-labelledby="session-heading" hidden><div class="collection-section-head"><h2 id="session-heading">Open in this session</h2><span id="session-count" class="eyebrow"></span></div><p class="collection-caption">Your open manuscripts, here until you close or reload this page.</p><ul class="work-grid" id="session-work-list"></ul></section>
-<section class="collection-section" id="published-section" aria-labelledby="collection-heading"><div class="collection-section-head"><h1 id="collection-heading">Collection</h1><div class="collection-tools"><span class="shelf-caption" id="published-count"></span><button class="icon-button" id="refresh-catalog" aria-label="Check for updates" title="Check for updates"><svg class="icon"><use href="#i-refresh"/></svg></button></div></div><div class="collection-empty" id="collection-empty"><span class="empty-glyph" aria-hidden="true">§</span><div><h3>Room for a growing collection.</h3><p>No texts have been published here yet. You can open a Markdown file of your own, or explore the reading page.</p></div></div><label class="collection-filter" id="collection-filter" hidden><span>Find a text</span><input id="collection-search" type="search" placeholder="Title, repository, or source title…" autocomplete="off"></label><p id="collection-no-results" class="collection-caption" hidden>No texts match your search.</p><ul class="work-grid" id="published-work-list" hidden></ul></section>
+<section class="collection-section" id="session-section" aria-labelledby="session-heading" hidden><div class="collection-section-head"><h2 id="session-heading">Open in this session</h2><span id="session-count" class="eyebrow"></span></div><p class="collection-caption">Texts you opened, kept here until you close or reload this page.</p><ul class="work-grid" id="session-work-list"></ul></section>
+<section class="collection-section" id="published-section" aria-labelledby="collection-heading"><div class="collection-section-head"><h1 id="collection-heading">Collection</h1><div class="collection-tools"><span class="shelf-caption" id="published-count"></span><button class="icon-button" id="refresh-catalog" aria-label="Check for updates" title="Check for updates"><svg class="icon"><use href="#i-refresh"/></svg></button></div></div><p class="collection-purpose">Wisdom texts in English and in their Tibetan sources, read passage by passage and checked against their published revisions.</p><div class="collection-empty" id="collection-empty"><span class="empty-glyph" aria-hidden="true">§</span><div><h3>Room for a growing collection.</h3><p>No texts have been published here yet. You can open a Markdown file of your own, or explore the reading page.</p></div></div><label class="collection-filter" id="collection-filter" hidden><span>Find a text</span><input id="collection-search" type="search" placeholder="Title, repository, or source title…" autocomplete="off"></label><p id="collection-no-results" class="collection-caption" hidden>No texts match your search.</p><ul class="work-grid" id="published-work-list" hidden></ul></section>
 
 </section>
 <header class="book-header" id="book-header" hidden>
 <div class="edition-line"><span class="edition-label eyebrow" id="edition-label">Reading room</span><span class="edition-han" id="edition-han" aria-hidden="true">R</span></div>
 <div class="title-block" id="title-block"><div id="title-content"></div><div class="bookplate" aria-hidden="true"><span lang="bo" id="bookplate-text">བོད་ཡིག</span></div></div>
-<div class="meta-row"><div class="meta-left"><span class="source-kind" id="source-kind">Manuscript</span><span class="meta-dot" aria-hidden="true"></span><span id="reading-estimate"></span></div><span class="source-status" id="source-status">Ready to read</span></div>
+<div class="meta-row"><div class="meta-left"><span class="source-kind" id="source-kind">Text</span><span class="meta-dot" aria-hidden="true"></span><span id="reading-estimate"></span></div><span class="source-status" id="source-status">Ready to read</span></div>
 </header>
 <p class="paired-status" id="paired-status" hidden role="status"></p>
 <article class="prose" id="manuscript" tabindex="-1" hidden aria-label="Manuscript text"></article>
-<div id="manuscript-end" hidden><div class="endpiece" aria-label="End of the text">·</div><div class="end-actions"><p id="end-caption">You have reached the end of this manuscript.</p><button class="text-button" id="next-juan" hidden>Next volume</button><button class="text-button" id="next-volume">Back to the collection <svg class="icon"><use href="#i-arrow"/></svg></button></div></div>
-<noscript><div class="noscript-note">This reader needs JavaScript to render Markdown. Enable JavaScript and reopen this file. No server, account, or installation is required for local manuscripts.</div></noscript>
+<div id="manuscript-end" hidden><div class="endpiece" aria-label="End of the text">·</div><div class="end-actions"><p id="end-caption">End of the text.</p><button class="text-button" id="next-juan" hidden>Next volume</button><button class="text-button" id="next-volume">Back to the collection <svg class="icon"><use href="#i-arrow"/></svg></button></div></div>
+<noscript><div class="noscript-note">This reader needs JavaScript to render Markdown. Enable JavaScript and reopen this file. No server, account, or installation is required for local texts.</div></noscript>
 </main>
 <footer class="reading-footer"><div class="progress-track" role="progressbar" aria-label="Reading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress-track"><div class="progress-fill" id="progress-fill"></div></div><div class="footer-section" id="footer-section"><span>§</span>A place for close reading</div><div class="footer-meta"><span class="remaining" id="remaining">Make yourself at home</span><strong id="progress-label">0%</strong></div></footer>
 </div>
-<dialog id="library-dialog" aria-labelledby="library-title"><div class="dialog-head"><div><h2 id="library-title">Open a manuscript</h2></div><button class="icon-button" data-close aria-label="Close library"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="dialog-body"><div class="library-tools"><button class="primary" id="import-library"><svg class="icon"><use href="#i-upload"/></svg>Choose files</button><button class="secondary" id="refresh-library" hidden><svg class="icon"><use href="#i-refresh"/></svg>Refresh published collection</button></div><p class="library-status" id="library-status">Choose a Markdown or text file, paste text, or open a public text URL.</p><ul class="library-list" id="library-list"></ul><div class="library-foot"><label class="field-label" for="url-input">Open a public text URL</label><form class="url-form" id="url-form"><input type="url" id="url-input" placeholder="https://example.org/manuscript.md" required spellcheck="false" autocomplete="off"><button type="submit" class="primary" id="url-submit">Open link</button></form><p class="dialog-error" id="library-error" hidden role="alert"></p><details class="paste-details"><summary>Paste text</summary><label class="sr-only" for="paste-input">Markdown manuscript</label><textarea id="paste-input" placeholder="# Your manuscript&#10;&#10;Paste the Markdown here…" spellcheck="false"></textarea><button class="secondary" id="paste-button">Read this text <svg class="icon"><use href="#i-arrow"/></svg></button></details><p class="privacy-note">Files and pasted text stay on this device.</p></div></div></dialog>
-<dialog class="search-dialog" id="search-dialog" aria-label="Search this text"><div class="search-input-wrap"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><label for="search-input" class="sr-only">Search English or Tibetan</label><input id="search-input" type="text" placeholder="Find a word, a passage, a thought…" autocomplete="off" spellcheck="false"><button class="icon-button" data-close aria-label="Close search"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="search-scope"><span id="search-scope">In this volume</span><span id="search-count" aria-live="polite">Type to search</span></div><ul class="search-results" id="search-results"></ul><div class="search-empty" id="search-empty">Search the current manuscript in English or Tibetan.</div></dialog>
-<dialog class="settings-dialog" id="settings-dialog" aria-labelledby="settings-title"><div class="dialog-head"><div><p class="dialog-kicker">Make yourself at home</p><h2 id="settings-title">The reading page</h2></div><button class="icon-button" data-close aria-label="Close appearance settings"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="dialog-body"><div class="settings-group"><span class="field-label">Page palette</span><div class="theme-options" role="group" aria-label="Page palette"><button class="theme-choice" data-theme="paper" aria-pressed="true"><span class="theme-swatch" aria-hidden="true"></span>Paper</button><button class="theme-choice" data-theme="mist" aria-pressed="false"><span class="theme-swatch" aria-hidden="true"></span>Mist</button><button class="theme-choice" data-theme="ink" aria-pressed="false"><span class="theme-swatch" aria-hidden="true"></span>Ink</button></div></div><div class="settings-group"><div class="settings-row"><label for="font-size">Text size</label><output id="size-value" for="font-size">20 px</output></div><input id="font-size" type="range" min="16" max="28" step="1" value="20"><div class="settings-row muted"><span style="font:15px var(--serif)">Aa</span><span style="font:25px var(--serif)">Aa</span></div></div><div class="settings-group"><span class="field-label">Line length</span><div class="segmented" role="group" aria-label="Line length"><button data-measure="620" aria-pressed="false">Intimate</button><button data-measure="720" aria-pressed="true">Balanced</button><button data-measure="840" aria-pressed="false">Spacious</button></div></div><div class="settings-group"><div class="settings-row"><label for="line-height">Line spacing</label><output id="leading-value" for="line-height">1.88</output></div><input id="line-height" type="range" min="1.5" max="2.2" step="0.02" value="1.88"></div><div class="settings-group"><label class="citation-setting" for="auto-citations"><input type="checkbox" id="auto-citations" checked><span><strong>Separate cited passages</strong><small>Recognize attributed quotations in plain paragraphs. Unclear boundaries stay as written. The original Markdown is never changed.</small></span></label></div><p class="settings-preview">A little space for the words.<br><span lang="bo" style="font-family:var(--tibetan)">བོད་ཡིག</span></p><button class="text-button" id="reset-settings">Restore defaults</button></div></dialog>
+<dialog id="library-dialog" aria-labelledby="library-title"><div class="dialog-head"><div><h2 id="library-title">Open your own text</h2></div><button class="icon-button" data-close aria-label="Close library"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="dialog-body"><div class="library-tools"><button class="primary" id="import-library"><svg class="icon"><use href="#i-upload"/></svg>Choose files</button><button class="secondary" id="refresh-library" hidden><svg class="icon"><use href="#i-refresh"/></svg>Refresh published collection</button></div><p class="library-status" id="library-status">Choose a Markdown or text file, paste text, or open a public text URL.</p><ul class="library-list" id="library-list"></ul><div class="library-foot"><label class="field-label" for="url-input">Open a public text URL</label><form class="url-form" id="url-form"><input type="url" id="url-input" placeholder="https://example.org/text.md" required spellcheck="false" autocomplete="off"><button type="submit" class="primary" id="url-submit">Open link</button></form><p class="dialog-error" id="library-error" hidden role="alert"></p><details class="paste-details"><summary>Paste text</summary><label class="sr-only" for="paste-input">Markdown text</label><textarea id="paste-input" placeholder="# Your text&#10;&#10;Paste the Markdown here…" spellcheck="false"></textarea><button class="secondary" id="paste-button">Read this text <svg class="icon"><use href="#i-arrow"/></svg></button></details><p class="privacy-note">Files and pasted text stay on this device.</p></div></div></dialog>
+<dialog class="search-dialog" id="search-dialog" aria-label="Search this text"><div class="search-input-wrap"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><label for="search-input" class="sr-only">Search English or Tibetan</label><input id="search-input" type="text" placeholder="Find a word, a passage, a thought…" autocomplete="off" spellcheck="false"><button class="icon-button" data-close aria-label="Close search"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="search-scope"><span id="search-scope">In this volume</span><span id="search-count" aria-live="polite">Type to search</span></div><ul class="search-results" id="search-results"></ul><div class="search-empty" id="search-empty">Search this text in English or Tibetan.</div></dialog>
+<dialog class="settings-dialog" id="settings-dialog" aria-labelledby="settings-title"><div class="dialog-head"><div><p class="dialog-kicker">Make yourself at home</p><h2 id="settings-title">The reading page</h2></div><button class="icon-button" data-close aria-label="Close appearance settings"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="dialog-body"><div class="settings-group"><span class="field-label">Page palette</span><div class="theme-options" role="group" aria-label="Page palette"><button class="theme-choice" data-theme="paper" aria-pressed="true"><span class="theme-swatch" aria-hidden="true"></span>Paper</button><button class="theme-choice" data-theme="mist" aria-pressed="false"><span class="theme-swatch" aria-hidden="true"></span>Mist</button><button class="theme-choice" data-theme="ink" aria-pressed="false"><span class="theme-swatch" aria-hidden="true"></span>Ink</button></div></div><div class="settings-group"><div class="settings-row"><label for="font-size">Text size</label><output id="size-value" for="font-size">20 px</output></div><input id="font-size" type="range" min="16" max="28" step="1" value="20"><div class="settings-row muted"><span style="font:15px var(--serif)">Aa</span><span style="font:25px var(--serif)">Aa</span></div></div><div class="settings-group"><span class="field-label">Line length</span><div class="segmented" role="group" aria-label="Line length"><button data-measure="620" aria-pressed="false">Intimate</button><button data-measure="720" aria-pressed="true">Balanced</button><button data-measure="840" aria-pressed="false">Spacious</button></div></div><div class="settings-group"><div class="settings-row"><label for="line-height">Line spacing</label><output id="leading-value" for="line-height">1.88</output></div><input id="line-height" type="range" min="1.5" max="2.2" step="0.02" value="1.88"></div><div class="settings-group"><label class="citation-setting" for="auto-citations"><input type="checkbox" id="auto-citations" checked><span><strong>Separate cited passages</strong><small>Recognize attributed quotations in plain paragraphs. Unclear boundaries stay as written. The original Markdown is never changed.</small></span></label></div><p class="settings-preview">A little space for the words.<br><span lang="bo" style="font-family:var(--tibetan)">བོད་ཡིག</span></p><div class="settings-foot"><button class="text-button" id="reset-settings">Restore defaults</button><button class="text-button" id="demo-button">See the typography specimen</button></div></div></dialog>
 <dialog class="note-dialog" id="note-dialog" aria-labelledby="note-title"><div class="dialog-head"><h2 id="note-title">Note</h2><button class="icon-button" data-close aria-label="Close footnote"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="note-content" id="note-content"></div><div class="note-bottom"><button id="note-jump">Read in the endnotes <span aria-hidden="true">↗</span></button></div></dialog>
-<dialog class="source-dialog" id="source-dialog" aria-labelledby="source-title"><div class="dialog-head"><div><p class="dialog-kicker">The manuscript, unchanged</p><h2 id="source-title">Manuscript &amp; source</h2></div><button class="icon-button" data-close aria-label="Close manuscript source"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="dialog-body"><p class="dialog-copy" id="source-description">The original Markdown is preserved exactly as loaded.</p><div class="source-actions"><a class="secondary" id="github-link" hidden target="_blank" rel="noopener noreferrer">View on GitHub <svg class="icon"><use href="#i-external"/></svg></a><button class="secondary" id="download-markdown" disabled><svg class="icon"><use href="#i-download"/></svg>Save Markdown</button><button class="primary" id="export-reader" disabled><svg class="icon"><use href="#i-book"/></svg>Save offline reading copy</button><button class="primary" id="export-epub" disabled><svg class="icon"><use href="#i-download"/></svg>Export EPUB</button><button class="secondary" id="print-button" disabled>Print</button></div><label class="field-label" for="source-textarea">Original Markdown (read-only)</label><textarea id="source-textarea" class="source-textarea" readonly spellcheck="false"></textarea><p class="privacy-note">An offline reading copy embeds this manuscript inside a new HTML file. It does not include linked images, other volumes, or your reading history. Keep private manuscripts private when sharing the copy.</p></div></dialog>
+<dialog class="source-dialog" id="source-dialog" aria-labelledby="source-title"><div class="dialog-head"><div><p class="dialog-kicker">The files, unchanged</p><h2 id="source-title">Download &amp; export</h2></div><button class="icon-button" data-close aria-label="Close download and export"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="dialog-body"><p class="dialog-copy" id="source-description">The original Markdown is preserved exactly as loaded.</p><div class="source-actions"><a class="secondary" id="github-link" hidden target="_blank" rel="noopener noreferrer">View on GitHub <svg class="icon"><use href="#i-external"/></svg></a><button class="secondary" id="download-markdown" disabled><svg class="icon"><use href="#i-download"/></svg>Save Markdown</button><button class="primary" id="export-reader" disabled><svg class="icon"><use href="#i-book"/></svg>Save offline reading copy</button><button class="primary" id="export-epub" disabled><svg class="icon"><use href="#i-download"/></svg>Export EPUB</button><button class="secondary" id="print-button" disabled>Print</button></div><label class="field-label" for="source-textarea">Original Markdown (read-only)</label><textarea id="source-textarea" class="source-textarea" readonly spellcheck="false"></textarea><p class="privacy-note">An offline reading copy embeds this text inside a new HTML file. It does not include linked images, other volumes, or your reading history. Keep private texts private when sharing the copy.</p></div></dialog>
 <input id="file-input" type="file" multiple accept=".md,.markdown,.txt,text/markdown,text/plain" hidden>
 <div class="toast" id="toast" role="status" hidden><span id="toast-text"></span><button id="toast-action" hidden></button></div>
-<div class="drop-overlay" id="drop-overlay" hidden aria-hidden="true"><div class="drop-han">R</div><h2>A place for your manuscript.</h2><p>Drop Markdown files to add them to the reading room.</p></div>
+<div class="drop-overlay" id="drop-overlay" hidden aria-hidden="true"><div class="drop-han">R</div><h2>A place for your text.</h2><p>Drop Markdown files to add them to the reading room.</p></div>
 <div class="sr-only" id="announcer" aria-live="polite"></div>
 <!-- Optional offline payload. The export command populates this element safely. -->
 <script type="application/json" id="embedded-manuscript">null</script>
@@ -3384,7 +3388,7 @@ This software is provided by the copyright holders and contributors “as is” 
 
 </script>
 
-<dialog id="epub-dialog" aria-labelledby="epub-title"><div class="dialog-head"><div><p class="dialog-kicker">A book to take with you</p><h2 id="epub-title">Export an EPUB</h2></div><button class="icon-button" data-close aria-label="Close EPUB export"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="dialog-body"><p class="dialog-copy">The open manuscript, made into a reflowable book. Your reading device chooses the page size and type size.</p><form id="epub-form"><div class="epub-fields"><label><span class="field-label">Book title</span><input id="epub-book-title" type="text" required maxlength="500" autocomplete="off"></label><label><span class="field-label">Author or credited creator <span class="muted">· optional</span></span><input id="epub-author" type="text" maxlength="500" autocomplete="off"><span class="field-hint">Use the credit you want in the book's metadata. No author is inferred.</span></label><label><span class="field-label">Primary language</span><input id="epub-language" type="text" value="en" maxlength="35" required pattern="[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*" autocomplete="off" spellcheck="false"><span class="field-hint">For example: en or bo. Tibetan and other language tags are preserved.</span></label></div><div class="epub-summary" id="epub-summary">Section navigation, citations, tables, and linked endnotes travel with the text.</div><p class="epub-image-note" id="epub-image-note" hidden></p><p class="dialog-error" id="epub-error" role="alert" hidden></p><div class="epub-actions"><p class="privacy-note">Created entirely on your device. Nothing is uploaded. Only the current manuscript is included.</p><button type="submit" class="primary" id="epub-save"><svg class="icon"><use href="#i-download"/></svg>Download EPUB</button></div></form></div></dialog>
+<dialog id="epub-dialog" aria-labelledby="epub-title"><div class="dialog-head"><div><p class="dialog-kicker">A book to take with you</p><h2 id="epub-title">Export an EPUB</h2></div><button class="icon-button" data-close aria-label="Close EPUB export"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="dialog-body"><p class="dialog-copy">The open text, made into a reflowable book. Your reading device chooses the page size and type size.</p><form id="epub-form"><div class="epub-fields"><label><span class="field-label">Book title</span><input id="epub-book-title" type="text" required maxlength="500" autocomplete="off"></label><label><span class="field-label">Author or credited creator <span class="muted">· optional</span></span><input id="epub-author" type="text" maxlength="500" autocomplete="off"><span class="field-hint">Use the credit you want in the book's metadata. No author is inferred.</span></label><label><span class="field-label">Primary language</span><input id="epub-language" type="text" value="en" maxlength="35" required pattern="[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*" autocomplete="off" spellcheck="false"><span class="field-hint">For example: en or bo. Tibetan and other language tags are preserved.</span></label></div><div class="epub-summary" id="epub-summary">Section navigation, citations, tables, and linked endnotes travel with the text.</div><p class="epub-image-note" id="epub-image-note" hidden></p><p class="dialog-error" id="epub-error" role="alert" hidden></p><div class="epub-actions"><p class="privacy-note">Created entirely on your device. Nothing is uploaded. Only the open text is included.</p><button type="submit" class="primary" id="epub-save"><svg class="icon"><use href="#i-download"/></svg>Download EPUB</button></div></form></div></dialog>
 
 <script id="epub-engine">
 /* Lukija EPUB export. Browser-only, no dependencies, no network access.
@@ -3430,7 +3434,7 @@ This software is provided by the copyright holders and contributors “as is” 
       c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, path.length, true);
       c.setUint32(42, offset, true); central.set(path, 46); directory.push(central);
       offset += header.length + data.length; directoryLength += central.length;
-      if (offset > 100 * 1024 * 1024) throw new Error('This EPUB exceeds the 100 MB export limit. Export a smaller manuscript.');
+      if (offset > 100 * 1024 * 1024) throw new Error('This EPUB exceeds the 100 MB export limit. Export a smaller text.');
     }
     const end = new Uint8Array(22), e = new DataView(end.buffer);
     e.setUint32(0, 0x06054b50, true); e.setUint16(8, entries.length, true); e.setUint16(10, entries.length, true);
@@ -3524,7 +3528,7 @@ nav ol { padding-left: 1.3em; } nav li { margin: .6em 0; }
     body.querySelectorAll('a').forEach(a => {
       const local = a.getAttribute('data-local-link');
       const href = a.getAttribute('href') || '';
-      if (local) { a.removeAttribute('href'); a.setAttribute('title', `Local manuscript link: ${local}`); }
+      if (local) { a.removeAttribute('href'); a.setAttribute('title', `Local link: ${local}`); }
       else if (href.startsWith('#')) {
         let target; try { target = decodeURIComponent(href.slice(1)); } catch (_) { target = href.slice(1); }
         if (ids.has(target)) a.setAttribute('href', `#${ids.get(target)}`);
@@ -3574,9 +3578,9 @@ nav ol { padding-left: 1.3em; } nav li { margin: .6em 0; }
     const render = list => `<ol>${list.map(h => `<li><a href="content.xhtml#${escapeXML(h.id)}">${escapeXML(h.text)}</a>${h.children.length ? render(h.children) : ''}</li>`).join('')}</ol>`;
     return render(root);
   }
-  function build({root, title = 'Untitled manuscript', author = '', language = 'en', source = '', identifier = '', date = new Date(), specimen = false}) {
+  function build({root, title = 'Untitled text', author = '', language = 'en', source = '', identifier = '', date = new Date(), specimen = false}) {
     if (!root || typeof root.cloneNode !== 'function') throw new TypeError('An already-sanitized manuscript DOM is required.');
-    title = clean(title).trim().slice(0, 500) || 'Untitled manuscript';
+    title = clean(title).trim().slice(0, 500) || 'Untitled text';
     author = clean(author).trim().slice(0, 500); language = validLanguage(language);
     if (!(date instanceof Date) || !Number.isFinite(date.getTime())) throw new TypeError('A valid export date is required.');
     const uuid = globalThis.crypto?.randomUUID?.() || 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -4097,7 +4101,7 @@ function create(onChange=()=>{},config) {
   }
   async function readFile(endpoint,file,signal,onProgress) {
     if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
-    if(file.size>LIMIT)throw new Error('This text exceeds the 4 MB manuscript limit.');
+    if(file.size>LIMIT)throw new Error('This text exceeds the 4 MB limit for a text.');
     const url=locations(endpoint,file.path).url;let bytes,transferred=0,totalBytes=file.size || null;
     const report=phase=>notifyProgress(onProgress,{loadedBytes:transferred,totalBytes,phase});
     const download=async(target,headers)=>{
@@ -4405,7 +4409,7 @@ function createCompiler(marked) {
     let html = marked.parse(body);
     // Do not silently discard unused definitions.
     for (const label of definitions.keys()) noteNumber(label);
-    if (ordered.length > 1500) throw new Error('This manuscript has more than 1,500 footnotes. Split it into smaller volumes.');
+    if (ordered.length > 1500) throw new Error('This text has more than 1,500 footnotes. Split it into smaller files.');
     if (ordered.length) {
       const notes = [];
       for (let i = 0; i < ordered.length && i < 1500; i++) {
@@ -4438,7 +4442,7 @@ function parseMarkdown(source, signal) {
     const abort = () => finish(new DOMException('Cancelled', 'AbortError'));
     const fallback = () => {
       worker?.terminate(); if (blobURL) { URL.revokeObjectURL(blobURL); blobURL = null; }
-      if (source.length > CONFIG.maximumBytes) return finish(new Error('This browser blocks background parsing. Open the reader in a browser with Web Worker support, or split this large manuscript into smaller files.'));
+      if (source.length > CONFIG.maximumBytes) return finish(new Error('This browser blocks background parsing. Open the reader in a browser with Web Worker support, or split this large text into smaller files.'));
       // Parsing is linear, so even a full-size manuscript parses on the main thread.
       setTimeout(() => {
         if (signal?.aborted) return;
@@ -4452,7 +4456,7 @@ function parseMarkdown(source, signal) {
       const workerCode = engine + '\nconst compile = (' + createCompiler.toString() + ')(self.marked);\nself.onmessage = e => { try { self.postMessage({ok:true, result:compile(e.data)}); } catch(error) { self.postMessage({ok:false, error:String(error.message || error)}); } };';
       blobURL = URL.createObjectURL(new Blob([workerCode], {type:'application/javascript'}));
       worker = new Worker(blobURL);
-      timer = setTimeout(() => finish(new Error('This manuscript took too long to parse. Check for unusually complex Markdown or split it into smaller volumes.')), CONFIG.parseTimeout + CONFIG.parsePerMegabyte * source.length / 1048576);
+      timer = setTimeout(() => finish(new Error('This text took too long to parse. Check for unusually complex Markdown or split it into smaller volumes.')), CONFIG.parseTimeout + CONFIG.parsePerMegabyte * source.length / 1048576);
       worker.onmessage = event => event.data.ok ? finish(null,event.data.result) : finish(new Error(event.data.error));
       worker.onerror = () => fallback();
       worker.postMessage(source);
@@ -4481,7 +4485,7 @@ function safeDOM(html, base) {
   const classes = new Set(['footnotes','footnote-ref','footnote-back','parallel','source-text','translation','annotation','commentary','root-text','align-center','align-right','reader-pair-end']);
   const frag = document.createDocumentFragment(); const ids = new Map(), usedIds = new Set(); let nodeCount = 0;
   function copy(node, parent, depth = 0) {
-    if (++nodeCount > 180000 || depth > 100) throw new Error('This manuscript is too structurally complex to display safely. Split it into smaller files.');
+    if (++nodeCount > 180000 || depth > 100) throw new Error('This text is too structurally complex to display safely. Split it into smaller files.');
     if (node.nodeType === Node.TEXT_NODE) { parent.append(document.createTextNode(node.textContent)); return; }
     if (node.nodeType !== Node.ELEMENT_NODE || drop.has(node.tagName)) return;
     if (!allowed.has(node.tagName)) { for (const child of node.childNodes) copy(child,parent,depth+1); return; }
@@ -4844,7 +4848,7 @@ function markApparatus(root) {
 }
 function prepareContent(fragment, metadata, descriptor) {
   const first = fragment.querySelector('h1');
-  const title = first?.textContent.trim() || metadata.title || descriptor.title || 'Untitled manuscript';
+  const title = first?.textContent.trim() || metadata.title || descriptor.title || 'Untitled text';
   // Move the first H1 into the page masthead only when it begins the document.
   const firstMeaningful = [...fragment.childNodes].find(node => node.nodeType === 1 || node.textContent.trim());
   if (first && firstMeaningful === first) first.remove();
@@ -4897,12 +4901,12 @@ function hanNumber(n) {
 }
 function fileLabel(path) {
   const n = volumeNumber(path); if (n !== null) return 'Part '+String(n).padStart(2,'0');
-  let name=path.split('/').pop() || 'Manuscript';
+  let name=path.split('/').pop() || 'Text';
   try { name=decodeURIComponent(name); } catch (_) {}
   return name.replace(/\.(md|markdown|txt)$/i,'').replace(/[-_]/g,' ');
 }
 function cleanPath(path) {
-  if (typeof path !== 'string') throw new Error('Invalid manuscript path.');
+  if (typeof path !== 'string') throw new Error('Invalid text path.');
   const normalized = path.replace(/^\.\//,'');
   if (normalized.startsWith('/') || normalized.includes('\\') || normalized.split('/').some(part => part === '..') || !/\.(md|markdown|txt)$/i.test(normalized)) throw new Error('Choose a relative Markdown path inside this project.');
   return normalized;
@@ -4933,7 +4937,7 @@ let catalogActive=false,catalogTimer=null;
 function catalogCard(work) {
   const li=document.createElement('li'),button=document.createElement('button');
   button.type='button';button.className='work-card published-card';button.dataset.work=work.id;
-  button.append(textElement('span','English · Tibetan','work-card-kicker'));
+  button.append(textElement('span','English · '+languageName(work.sourceLanguage || 'bo'),'work-card-kicker'));
   const original=textElement('span',work.originalTitle || '', 'work-card-original');original.lang=work.sourceLanguage || 'bo';button.append(original);
   button.append(textElement('span',work.title,'work-card-title'),textElement('span',work.description,'work-card-detail'));
   const extent=storageRead('extent:'+work.id), version=/v\d[\w.-]*$/i.exec(extent?.edition || '')?.[0];
@@ -5088,15 +5092,15 @@ function workIdentity(entry) {
     author: pick(m.author), translator: pick(m.translator), edition: pick(m['paired-edition'],m.edition,m['translation-edition'],m.source_edition,m.base_edition)
   };
 }
-function readingLabel(entry) { return entry.kind==='catalog' && catalog.get(entry.catalogId).english.kind==='file' ? entry.workTitle : entry.kind==='catalog' ? entry.workTitle+' · '+fileLabel(entry.path) : entry.title; }
+function readingLabel(entry) { return entry.kind==='embedded' && entry.readingTitle ? entry.readingTitle : entry.kind==='catalog' && catalog.get(entry.catalogId).english.kind==='file' ? entry.workTitle : entry.kind==='catalog' ? entry.workTitle+' · '+fileLabel(entry.path) : entry.title; }
 function renderWorkIdentity(entry, titleNode = null) {
-  const identity = workIdentity(entry), specimen = entry.kind === 'specimen', title = entry.title || 'Untitled manuscript';
+  const identity = workIdentity(entry), specimen = entry.kind === 'specimen', title = entry.title || 'Untitled text';
   const heading = titleNode || textElement('h1', title);
   if(entry.kind==='catalog' && catalog.get(entry.catalogId).english.kind==='file')heading.textContent=entry.workTitle;
   heading.classList.add('volume-title'); heading.id ||= 'volume-title';
   if (/[\u0f00-\u0fff]/.test(title))heading.lang='bo';else if (chineseDominant(title)) heading.lang = 'zh';
   const part = entry.number ? fileLabel(entry.path || entry.filename || '') : '';
-  const kicker = specimen ? 'Typography specimen · not a translation' : [identity.work !== title ? identity.work : '', part].filter(Boolean).join(' · ') || 'The manuscript';
+  const kicker = specimen ? 'Typography specimen · not a translation' : [identity.work !== title ? identity.work : '', part].filter(Boolean).join(' · ') || 'The text';
   $('title-content').replaceChildren(textElement('div', kicker, 'volume-kicker'));
   if (identity.chinese && identity.chinese !== title) {
     const original = textElement('p', identity.chinese, 'work-original-title');
@@ -5111,7 +5115,7 @@ function renderWorkIdentity(entry, titleNode = null) {
   $('bookplate-text').textContent = hanTitle && [...hanTitle].length <= 12 ? hanTitle : 'བོད་ཡིག';
   $('edition-han').lang=entry.sourceLanguage || (/[\u0f00-\u0fff]/.test(hanTitle)?'bo':'zh');
   $('edition-han').textContent = hanTitle || ''; $('edition-han').title = hanTitle;
-  $('edition-label').textContent = specimen ? 'An interface specimen, not source text' : identity.edition || 'The manuscript';
+  $('edition-label').textContent = specimen ? 'An interface specimen, not source text' : identity.edition || 'The text';
   $('toolbar-room').textContent = 'Reader';
   $('toolbar-volume').textContent = readingLabel(entry); $('toolbar-volume').title = readingLabel(entry);
   $('toc-label').textContent = 'In this text'; document.title = readingLabel(entry) + ' · Reader';
@@ -5229,14 +5233,14 @@ async function fetchText(url,parentSignal,onProgress) {
       const error = new Error(response.status === 404 ? 'The file could not be found or is not publicly accessible.' : `The server returned HTTP ${response.status}.`);
       error.status = response.status; throw error;
     }
-    if (Number(response.headers.get('content-length')) > CONFIG.maximumBytes) throw new Error('This file exceeds the 4 MB manuscript limit.');
+    if (Number(response.headers.get('content-length')) > CONFIG.maximumBytes) throw new Error('This file exceeds the 4 MB limit for a text.');
     if (/text\/html/i.test(response.headers.get('content-type') || '')) throw new Error('That address returned a web page, not Markdown. Use the raw file URL.');
     if (response.body?.getReader) {
       const reader = response.body.getReader(), decoder = new TextDecoder(); let total = 0, text = '';
       while (true) {
         const {done,value} = await reader.read(); if (done) break;
         total += value.byteLength;
-        if (total > CONFIG.maximumBytes) { await reader.cancel(); throw new Error('This file exceeds the 4 MB manuscript limit.'); }
+        if (total > CONFIG.maximumBytes) { await reader.cancel(); throw new Error('This file exceeds the 4 MB limit for a text.'); }
         text += decoder.decode(value,{stream:true});
         const expected=Number(response.headers.get('content-length')) || 0;
         onProgress?.({stage:'download',progress:expected?Math.min(.98,total/expected):Math.min(.9,total/(total+65536)),loadedBytes:total,totalBytes:expected || null});
@@ -5244,11 +5248,11 @@ async function fetchText(url,parentSignal,onProgress) {
       onProgress?.({stage:'ready',progress:1,loadedBytes:total,totalBytes:total});return text+decoder.decode();
     }
     const text = await response.text();
-    if (new Blob([text]).size > CONFIG.maximumBytes) throw new Error('This file exceeds the 4 MB manuscript limit.');
+    if (new Blob([text]).size > CONFIG.maximumBytes) throw new Error('This file exceeds the 4 MB limit for a text.');
     return text;
   } catch (error) {
     if (parentSignal?.aborted) throw new DOMException('Cancelled','AbortError');
-    if (controller.signal.aborted) throw new Error('The manuscript request timed out.');
+    if (controller.signal.aborted) throw new Error('The request for the text timed out.');
     throw error;
   } finally { clearTimeout(timeout); parentSignal?.removeEventListener('abort',abort); }
 }
@@ -5261,7 +5265,7 @@ async function getSource(descriptor, signal, onProgress) {
     try { return {text:await fetchText(local,signal,onProgress),sourceURL:local}; }
     catch (error) { if (signal.aborted || !descriptor.sourceURL) throw error; }
   }
-  if (!descriptor.sourceURL) throw new Error("Open this manuscript from a hosted collection, or choose its local Markdown file.");
+  if (!descriptor.sourceURL) throw new Error("Open this text from a hosted collection, or choose its local Markdown file.");
   return {text:await fetchText(descriptor.sourceURL,signal,onProgress),sourceURL:descriptor.sourceURL};
 }
 let loadingTimer=null, loadingPercent=0;
@@ -5270,7 +5274,7 @@ function loadingProgress(value,text) {
   $('loading-progress').setAttribute('aria-valuenow',String(loadingPercent));$('loading-fill').style.transform=`scaleX(${loadingPercent/100})`;$('loading-percent').textContent=loadingPercent+'%';
   if(text)$('loading-text').textContent=text;
 }
-function setBusy(on,text='Opening manuscript…') {
+function setBusy(on,text='Opening the text…') {
   clearTimeout(loadingTimer);state.busy=on;document.body.classList.toggle('loading',on);$('main-content').setAttribute('aria-busy',String(on));
   if(on){loadingPercent=0;$('loading-panel').hidden=false;$('loading-panel').classList.remove('complete');loadingProgress(2,text);announce(text);}
   else {
@@ -5278,7 +5282,12 @@ function setBusy(on,text='Opening manuscript…') {
     $('loading-panel').classList.add('complete');loadingTimer=setTimeout(()=>{$('loading-panel').hidden=true;},reduceMotion.matches?0:220);
   }
 }
-function sourceLanguageLabel() {return state.current?.sourceLanguage==='bo' || !state.current?.sourceLanguage ? 'Tibetan' : 'Source';}
+const languageNames=typeof Intl.DisplayNames==='function' ? new Intl.DisplayNames(['en'],{type:'language'}) : null;
+function languageName(code) {
+  try { const name=languageNames?.of(code); if (name && name.toLowerCase()!==String(code).toLowerCase()) return name; } catch {}
+  return code==='bo' ? 'Tibetan' : 'Source';
+}
+function sourceLanguageLabel() {return languageName(state.current?.sourceLanguage || 'bo');}
 function syncNotesToggle() {
   const button=$('notes-toggle');button.hidden=state.view!=='reading' || !$('manuscript').querySelector('.footnote-ref,.legacy-note-ref,.footnotes');
   button.setAttribute('aria-pressed',String(!!state.settings.notes));button.setAttribute('aria-label',state.settings.notes?'Hide endnotes':'Show endnotes');button.title=state.settings.notes?'Hide endnote links':'Show endnote links';
@@ -5315,10 +5324,10 @@ async function prepareParallel(fragment,candidate,signal) {
     if(schema==='paired-text/2'){
       if(candidate.structureError)throw Object.assign(new Error(candidate.structureError),{side:'translation',line:candidate.structureErrorLine});
       if(compiled.structureError)throw Object.assign(new Error(compiled.structureError),{side:'source',line:compiled.structureErrorLine});
-      if(!candidate.metadata['text-id'] || !compiled.metadata['text-id'])throw new Error('Both paired-text manuscripts must identify their text-id.');
+      if(!candidate.metadata['text-id'] || !compiled.metadata['text-id'])throw new Error('Both paired-text files must identify their text-id.');
       if(!candidate.metadata['source-edition'] || !compiled.metadata.edition || candidate.metadata['source-edition']!==compiled.metadata.edition || (compiled.metadata['source-edition'] && compiled.metadata['source-edition']!==compiled.metadata.edition))throw new Error('The translation and source edition do not match.');
       if(!candidate.metadata['translation-edition'])throw new Error('The paired translation must identify its translation-edition.');
-      if([candidate.metadata.language,compiled.metadata.language].some(language=>!language || !/^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(language)))throw new Error('Both paired-text manuscripts must declare a valid language.');
+      if([candidate.metadata.language,compiled.metadata.language].some(language=>!language || !/^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(language)))throw new Error('Both paired-text files must declare a valid language.');
       const unformatted=compiled.structures.find(pair=>pair.formatCount!==1 || !['prose','verse','h1','h2','h3'].includes(pair.format));
       if(unformatted)throw Object.assign(new Error(`Source pair ${unformatted.id} at line ${unformatted.line} must declare exactly one format: prose, verse, h1, h2, or h3.`),{side:'source',line:unformatted.line});
       const english=candidate.structures,source=compiled.structures;
@@ -5345,13 +5354,13 @@ async function loadDocument(descriptor, options = {}) {
   try {
     const result=await getSource(descriptor,controller.signal,event=>{
       if(loadId!==state.loadId)return;
-      loadingProgress(5+event.progress*70,event.stage==='metadata'?'Checking the manuscript…':event.stage==='ready'?'Preparing the reading page…':event.phase==='verify'?'Verifying the manuscripts…':'Loading English and Tibetan…');
+      loadingProgress(5+event.progress*70,event.stage==='metadata'?'Checking the text…':event.stage==='ready'?'Preparing the reading page…':event.phase==='verify'?'Verifying the texts…':'Loading English and Tibetan…');
     });
     loadingProgress(76,'Setting the English text…');
     await new Promise(resolve=>requestAnimationFrame(resolve));
     if (result.descriptor) descriptor={...descriptor,...result.descriptor};
-    if (new Blob([result.text]).size > CONFIG.maximumBytes) throw new Error('This file exceeds the 4 MB manuscript limit.');
-    if (!result.text.trim()) throw new Error('This manuscript is empty. Add text to the Markdown file and reopen it.');
+    if (new Blob([result.text]).size > CONFIG.maximumBytes) throw new Error('This file exceeds the 4 MB limit for a text.');
+    if (!result.text.trim()) throw new Error('This text is empty. Add text to the Markdown file and reopen it.');
     const compiled = await parseMarkdown(result.text,controller.signal);
     if (loadId !== state.loadId) return false;
     const fragment = safeDOM(compiled.html,result.sourceURL);
@@ -5391,7 +5400,7 @@ async function loadDocument(descriptor, options = {}) {
     // Counts only (never text), so the collection can show each work's extent.
     if (candidate.kind==='catalog') storageWrite('extent:'+candidate.catalogId,{passages:state.parallel?.total || 0,edition:workIdentity(candidate).edition || ''});
 
-    $('end-caption').textContent=candidate.kind === 'specimen' ? 'End of the typography specimen. Open your own manuscript to read.' : 'You have reached the end of this manuscript.';
+    $('end-caption').textContent=candidate.kind === 'specimen' ? 'End of the typography specimen. Open your own text to read.' : `End of ${shortTitle}.`;
     document.title=shortTitle+' · '+CONFIG.title;
     buildOutline(); buildSearchIndex(); updateBookmarkUI(); renderLibrary();
     loadingProgress(100,'Ready to read');setBusy(false);$('manuscript').classList.remove('reader-arriving');void $('manuscript').offsetWidth;$('manuscript').classList.add('reader-arriving');closeNav(false); $('load-message').hidden=true; syncRevisionNotice(); syncNextJuan();
@@ -5415,7 +5424,7 @@ async function loadDocument(descriptor, options = {}) {
     const detail = error instanceof TypeError ? 'The text could not be reached from this browser. This may be a network, privacy, or cross-origin restriction.' : error.message;
     // Published texts come through Reader's own cache, so a retry is the useful advice.
     showError(`${detail} ${descriptor.kind==='catalog' ? 'Try again in a moment.' : 'You can also open a downloaded Markdown file.'}`,true);
-    $('source-status').textContent=state.current ? 'Previous manuscript kept' : 'Source unavailable';
+    $('source-status').textContent=state.current ? 'Previous text kept' : 'Source unavailable';
     announce('The text could not be loaded.');
     state.retryDescriptor=descriptor;
     return false;
@@ -5425,7 +5434,7 @@ $('retry-button').addEventListener('click',() => { if(state.retryDescriptor) loa
 
 async function discoverVolumes() {
   $('refresh-library').disabled=true;
-  $('library-status').textContent='Looking for published manuscripts…';
+  $('library-status').textContent='Looking for published texts…';
   let manifestError=null;
   try {
     let entries;
@@ -5440,7 +5449,7 @@ async function discoverVolumes() {
           item.verified=true; addToLibrary(item);
         }
         state.discovered=true;
-        $('library-status').textContent=`${entries.length} manuscript${entries.length===1?'':'s'} listed in the local manifest.`;
+        $('library-status').textContent=`${entries.length} text${entries.length===1?'':'s'} listed in the local manifest.`;
         renderLibrary(); return;
       } catch(error) { manifestError=error; }
     }
@@ -5450,7 +5459,7 @@ async function discoverVolumes() {
     const files=listing.filter(item=>item.type==='file' && /\.(md|markdown)$/i.test(item.name));
     for (const file of files) { const item=fromProject(file.path); item.verified=true; addToLibrary(item); }
     state.discovered=true;
-    $('library-status').textContent=`${files.length} Markdown manuscript${files.length===1?'':'s'} found in ${CONFIG.directory}/. Local imports stay alongside them.`;
+    $('library-status').textContent=`${files.length} Markdown file${files.length===1?'':'s'} found in ${CONFIG.directory}/. Local imports stay alongside them.`;
     renderLibrary();
   } catch(error) {
     $('library-status').textContent='Repository discovery is unavailable. No additional volumes have been assumed. Import local files, or deploy a reader-manifest.json with the site.';
@@ -5469,7 +5478,7 @@ function openFilePicker() { $('file-input').click(); }
 $('import-library').addEventListener('click',openFilePicker);
 async function importFiles(files) {
   const candidates=[...files].filter(file=>/\.(md|markdown|txt)$/i.test(file.name));
-  if (!candidates.length) return notify('Choose a .md, .markdown, or .txt manuscript.');
+  if (!candidates.length) return notify('Choose a .md, .markdown, or .txt file.');
   const entries=[]; const rejected=[];
   for (const file of candidates) {
     if (file.size>CONFIG.maximumBytes) { rejected.push(file.name); continue; }
@@ -5477,18 +5486,18 @@ async function importFiles(files) {
       path:file.name, title:fileLabel(file.name), number:volumeNumber(file.name), file };
     addToLibrary(descriptor); entries.push(descriptor);
   }
-  if (!entries.length) return notify('These files exceed the 4 MB limit per manuscript.');
+  if (!entries.length) return notify('These files exceed the 4 MB limit for a text.');
   entries.sort((a,b)=>naturalSort.compare(a.filename,b.filename));
   closeDialog('library-dialog'); closeNav(false);
   const ok=await loadDocument(entries[0]); renderLibrary();
-  if (ok && (entries.length>1 || rejected.length)) notify(`${entries.length} manuscript${entries.length===1?'':'s'} opened locally.${rejected.length ? ' Some oversized files were skipped.':''}`);
+  if (ok && (entries.length>1 || rejected.length)) notify(`${entries.length} text${entries.length===1?'':'s'} opened locally.${rejected.length ? ' Some oversized files were skipped.':''}`);
 }
 $('file-input').addEventListener('change',async e=>{ await importFiles(e.target.files); e.target.value=''; });
 $('paste-button').addEventListener('click',async()=>{
   const text=$('paste-input').value;
   if (!text.trim()) { $('library-error').textContent='Paste some Markdown first.'; $('library-error').hidden=false; return; }
-  if (new Blob([text]).size>CONFIG.maximumBytes) { $('library-error').textContent='This text exceeds the 4 MB manuscript limit.'; $('library-error').hidden=false; return; }
-  const descriptor={id:'paste:'+hashText(text),kind:'paste',title:'Pasted manuscript',number:null,text};
+  if (new Blob([text]).size>CONFIG.maximumBytes) { $('library-error').textContent='This text exceeds the 4 MB limit for a text.'; $('library-error').hidden=false; return; }
+  const descriptor={id:'paste:'+hashText(text),kind:'paste',title:'Pasted text',number:null,text};
   closeDialog('library-dialog'); await loadDocument(descriptor);
 });
 let dragDepth=0;
@@ -5517,7 +5526,7 @@ function buildOutline() {
 }
 function renderOutline() {
   $('toc').replaceChildren(); $('toc-count').textContent=String(state.headings.filter(h=>h.level<=2).length).padStart(2,'0');
-  if (!state.headings.length) { $('toc').append(textElement('li','This manuscript has no section headings. Read from the beginning.','toc-empty')); return; }
+  if (!state.headings.length) { $('toc').append(textElement('li','This text has no section headings. Read from the beginning.','toc-empty')); return; }
   state.headings.forEach(heading=>{
     const li=document.createElement('li'), a=document.createElement('a');
     if (heading.level===3) li.className='sub';
@@ -5617,7 +5626,7 @@ function updateProgress() {
     $('toc').querySelectorAll('a').forEach(a=>{ if (a.dataset.target===active?.id) a.setAttribute('aria-current','location'); else a.removeAttribute('aria-current'); });
     $('footer-section').textContent=active?.text || state.current?.title || '';
   }
-  const remaining=state.current ? percent>=99 ? 'End of manuscript' : `About ${Math.max(1,Math.ceil(state.minutes*(1-state.progress)))} min left` : 'Make yourself at home';
+  const remaining=state.current ? percent>=99 ? 'End of the text' : `About ${Math.max(1,Math.ceil(state.minutes*(1-state.progress)))} min left` : 'Make yourself at home';
   if ($('remaining').textContent!==remaining) $('remaining').textContent=remaining;
 }
 window.addEventListener('scroll',()=>{ if (!scrollQueued) { scrollQueued=true; requestAnimationFrame(()=>{ if (!state.restoring && !state.busy && window.scrollY>1) state.hasMoved=true; updateProgress(); savePosition(); scrollQueued=false; }); } },{passive:true});
@@ -5633,7 +5642,7 @@ function updateBookmarkUI() {
   $('resume-button').hidden=!state.bookmark;
 }
 function bookmarkPosition() {
-  if (state.view !== 'reading' || !state.current || state.current.kind==='specimen') return notify('Open a manuscript to save a bookmark.');
+  if (state.view !== 'reading' || !state.current || state.current.kind==='specimen') return notify('Open a text to save a bookmark.');
   const old=state.bookmark, position=currentPosition();
   if (old && Math.abs(old.progress-position.progress)<.01) {
     storageRemove('bookmark:'+state.current.id); updateBookmarkUI(); notify('Bookmark removed.'); return;
@@ -5662,11 +5671,11 @@ function buildSearchIndex() {
     if (!el.id) el.id='passage-'+(++index);
     state.search.push({id:el.id,text,lower:searchForm(text),context});
   });
-  $('search-scope').textContent='In '+($('toolbar-volume').textContent || 'this manuscript');
+  $('search-scope').textContent='In '+($('toolbar-volume').textContent || 'this text');
   $('search-input').value=''; renderSearch();
 }
 function showSearch() {
-  if (state.view !== 'reading' || !state.current) return notify('Open a manuscript to search its text.','Open library',showLibrary);
+  if (state.view !== 'reading' || !state.current) return notify('Open a text to search it.','Open library',showLibrary);
   openDialog('search-dialog'); $('search-input').focus(); $('search-input').select(); renderSearch();
 }
 $('search-trigger').addEventListener('click',showSearch);
@@ -5676,7 +5685,7 @@ $('search-input').addEventListener('input',()=>{ clearTimeout(searchTimer); sear
 function searchForm(text) { return text.toLocaleLowerCase().replace(/[’‘]/g,"'"); }
 function renderSearch() {
   const query=searchForm($('search-input').value.trim()); $('search-results').replaceChildren();
-  if (!query) { $('search-empty').hidden=false; $('search-empty').textContent='Search the current manuscript in English or Tibetan.'; $('search-count').textContent='Type to search'; return; }
+  if (!query) { $('search-empty').hidden=false; $('search-empty').textContent='Search this text in English or Tibetan.'; $('search-count').textContent='Type to search'; return; }
   const matches=state.search.filter(item=>item.lower.includes(query));
   $('search-count').textContent=`${matches.length} passage${matches.length===1?'':'s'}${matches.length>60?' · first 60 shown':''}`;
   $('search-empty').hidden=!!matches.length;
@@ -5837,8 +5846,8 @@ $('note-content').addEventListener('click',e=>{
 
 function showSource() {
   if (!state.current) {
-    $('source-textarea').value='No manuscript is loaded yet.';
-    $('source-description').textContent='Open a manuscript to view its original Markdown and export a reading copy.';
+    $('source-textarea').value='No text is open yet.';
+    $('source-description').textContent='Open a text to view its original Markdown and export a reading copy.';
   } else {
     $('source-textarea').value=state.current.text;
     $('source-description').textContent=state.current.kind==='specimen' ? 'Typography specimen only. This is not a source text or translation.' : state.current.filename || state.current.path || state.current.title;
@@ -5858,19 +5867,21 @@ function download(content,filename,type) {
 }
 $('download-markdown').addEventListener('click',()=>{
   if (!state.current) return;
-  const name=state.current.filename || state.current.path?.split('/').pop() || 'manuscript.md';
+  const name=state.current.filename || state.current.path?.split('/').pop() || 'text.md';
   download(state.current.text,name,'text/markdown;charset=utf-8');
 });
 $('export-reader').addEventListener('click',()=>{
   if (!state.current) return;
   const payload={title:state.current.title,text:state.current.text,number:state.current.number || null,
     path:state.current.path || null,sourceURL:state.current.sourceURL || null,githubURL:state.current.githubURL || null,
-    originalKind:state.current.kind,workTitle:state.current.workTitle || '',chineseTitle:state.current.chineseTitle || '',originalTitle:state.current.originalTitle || '',sourceText:state.current.sourceText || '',sourceDescriptor:state.current.sourceDescriptor || null,sourceLanguage:state.current.sourceLanguage || 'bo',sectionMap:state.current.sectionMap || [],revision:state.current.revision || ''};
+    originalKind:state.current.kind,readingTitle:readingLabel(state.current),workTitle:state.current.workTitle || '',chineseTitle:state.current.chineseTitle || '',originalTitle:state.current.originalTitle || '',sourceText:state.current.sourceText || '',sourceDescriptor:state.current.sourceDescriptor || null,sourceLanguage:state.current.sourceLanguage || 'bo',sectionMap:state.current.sectionMap || [],revision:state.current.revision || ''};
   const escaped=JSON.stringify(payload).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026');
   const copy=appTemplate.replace(/(<script type="application\/json" id="embedded-manuscript">)[\s\S]*?(<\/script>)/,(_,open,close)=>open+escaped+close);
-  const name=state.current.filename?.replace(/\.[^.]+$/,'') || (state.current.number ? 'part-'+String(state.current.number).padStart(2,'0'):'manuscript');
+  // Named after the work, so a saved copy is recognisable among downloads.
+  const slug=readingLabel(state.current).normalize('NFKD').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,'-').replace(/^-+|-+$/g,'').slice(0,80);
+  const name=state.current.filename?.replace(/\.[^.]+$/,'') || slug || 'text';
   download(copy,name+'-reading-copy.html','text/html;charset=utf-8');
-  notify('Reading copy saved with the current manuscript embedded.');
+  notify('Reading copy saved with this text embedded.');
 });
 
 let epubExportDocument = null;
@@ -5878,7 +5889,7 @@ $('export-epub').addEventListener('click', () => {
   if (!state.current || state.busy) return;
   const metadata = state.current.metadata || {};
   epubExportDocument = state.current;
-  $('epub-book-title').value = readingLabel(state.current) || 'Untitled manuscript';
+  $('epub-book-title').value = readingLabel(state.current) || 'Untitled text';
   $('epub-author').value = typeof metadata.author === 'string' ? metadata.author : '';
   const language = metadata.language || metadata.lang || 'en';
   $('epub-language').value = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(language) ? language : 'en';
@@ -5894,7 +5905,7 @@ $('export-epub').addEventListener('click', () => {
 $('epub-form').addEventListener('submit', async event => {
   event.preventDefault();
   if (!state.current || state.current !== epubExportDocument || state.busy) {
-    $('epub-error').textContent = 'The manuscript changed. Close this dialog and start the export again.';
+    $('epub-error').textContent = 'The open text changed. Close this dialog and start the export again.';
     $('epub-error').hidden = false; return;
   }
   const button = $('epub-save'); button.disabled = true; button.setAttribute('aria-busy', 'true');
@@ -5955,7 +5966,7 @@ const SPECIMEN_SOURCE = `# བོད་ཡིག
 དཔེ་ཆ། བོད་ཡིག
 `;
 function specimenDescriptor() {return {id:'specimen',kind:'specimen',title:'The shape of a reading page',number:null,text:SPECIMEN,sourceText:SPECIMEN_SOURCE,sourceLanguage:'bo'};}
-$('demo-button').addEventListener('click',()=>loadDocument(specimenDescriptor()));
+$('demo-button').addEventListener('click',()=>{ if ($('settings-dialog').open) closeDialog('settings-dialog'); loadDocument(specimenDescriptor()); });
 
 document.addEventListener('keydown',e=>{
   const editing=e.target.matches('input,textarea,select,[contenteditable="true"]');

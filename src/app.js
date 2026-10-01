@@ -228,7 +228,7 @@ function createCompiler(marked) {
     let html = marked.parse(body);
     // Do not silently discard unused definitions.
     for (const label of definitions.keys()) noteNumber(label);
-    if (ordered.length > 1500) throw new Error('This manuscript has more than 1,500 footnotes. Split it into smaller volumes.');
+    if (ordered.length > 1500) throw new Error('This text has more than 1,500 footnotes. Split it into smaller files.');
     if (ordered.length) {
       const notes = [];
       for (let i = 0; i < ordered.length && i < 1500; i++) {
@@ -261,7 +261,7 @@ function parseMarkdown(source, signal) {
     const abort = () => finish(new DOMException('Cancelled', 'AbortError'));
     const fallback = () => {
       worker?.terminate(); if (blobURL) { URL.revokeObjectURL(blobURL); blobURL = null; }
-      if (source.length > CONFIG.maximumBytes) return finish(new Error('This browser blocks background parsing. Open the reader in a browser with Web Worker support, or split this large manuscript into smaller files.'));
+      if (source.length > CONFIG.maximumBytes) return finish(new Error('This browser blocks background parsing. Open the reader in a browser with Web Worker support, or split this large text into smaller files.'));
       // Parsing is linear, so even a full-size manuscript parses on the main thread.
       setTimeout(() => {
         if (signal?.aborted) return;
@@ -275,7 +275,7 @@ function parseMarkdown(source, signal) {
       const workerCode = engine + '\nconst compile = (' + createCompiler.toString() + ')(self.marked);\nself.onmessage = e => { try { self.postMessage({ok:true, result:compile(e.data)}); } catch(error) { self.postMessage({ok:false, error:String(error.message || error)}); } };';
       blobURL = URL.createObjectURL(new Blob([workerCode], {type:'application/javascript'}));
       worker = new Worker(blobURL);
-      timer = setTimeout(() => finish(new Error('This manuscript took too long to parse. Check for unusually complex Markdown or split it into smaller volumes.')), CONFIG.parseTimeout + CONFIG.parsePerMegabyte * source.length / 1048576);
+      timer = setTimeout(() => finish(new Error('This text took too long to parse. Check for unusually complex Markdown or split it into smaller volumes.')), CONFIG.parseTimeout + CONFIG.parsePerMegabyte * source.length / 1048576);
       worker.onmessage = event => event.data.ok ? finish(null,event.data.result) : finish(new Error(event.data.error));
       worker.onerror = () => fallback();
       worker.postMessage(source);
@@ -304,7 +304,7 @@ function safeDOM(html, base) {
   const classes = new Set(['footnotes','footnote-ref','footnote-back','parallel','source-text','translation','annotation','commentary','root-text','align-center','align-right','reader-pair-end']);
   const frag = document.createDocumentFragment(); const ids = new Map(), usedIds = new Set(); let nodeCount = 0;
   function copy(node, parent, depth = 0) {
-    if (++nodeCount > 180000 || depth > 100) throw new Error('This manuscript is too structurally complex to display safely. Split it into smaller files.');
+    if (++nodeCount > 180000 || depth > 100) throw new Error('This text is too structurally complex to display safely. Split it into smaller files.');
     if (node.nodeType === Node.TEXT_NODE) { parent.append(document.createTextNode(node.textContent)); return; }
     if (node.nodeType !== Node.ELEMENT_NODE || drop.has(node.tagName)) return;
     if (!allowed.has(node.tagName)) { for (const child of node.childNodes) copy(child,parent,depth+1); return; }
@@ -667,7 +667,7 @@ function markApparatus(root) {
 }
 function prepareContent(fragment, metadata, descriptor) {
   const first = fragment.querySelector('h1');
-  const title = first?.textContent.trim() || metadata.title || descriptor.title || 'Untitled manuscript';
+  const title = first?.textContent.trim() || metadata.title || descriptor.title || 'Untitled text';
   // Move the first H1 into the page masthead only when it begins the document.
   const firstMeaningful = [...fragment.childNodes].find(node => node.nodeType === 1 || node.textContent.trim());
   if (first && firstMeaningful === first) first.remove();
@@ -720,12 +720,12 @@ function hanNumber(n) {
 }
 function fileLabel(path) {
   const n = volumeNumber(path); if (n !== null) return 'Part '+String(n).padStart(2,'0');
-  let name=path.split('/').pop() || 'Manuscript';
+  let name=path.split('/').pop() || 'Text';
   try { name=decodeURIComponent(name); } catch (_) {}
   return name.replace(/\.(md|markdown|txt)$/i,'').replace(/[-_]/g,' ');
 }
 function cleanPath(path) {
-  if (typeof path !== 'string') throw new Error('Invalid manuscript path.');
+  if (typeof path !== 'string') throw new Error('Invalid text path.');
   const normalized = path.replace(/^\.\//,'');
   if (normalized.startsWith('/') || normalized.includes('\\') || normalized.split('/').some(part => part === '..') || !/\.(md|markdown|txt)$/i.test(normalized)) throw new Error('Choose a relative Markdown path inside this project.');
   return normalized;
@@ -756,7 +756,7 @@ let catalogActive=false,catalogTimer=null;
 function catalogCard(work) {
   const li=document.createElement('li'),button=document.createElement('button');
   button.type='button';button.className='work-card published-card';button.dataset.work=work.id;
-  button.append(textElement('span','English · Tibetan','work-card-kicker'));
+  button.append(textElement('span','English · '+languageName(work.sourceLanguage || 'bo'),'work-card-kicker'));
   const original=textElement('span',work.originalTitle || '', 'work-card-original');original.lang=work.sourceLanguage || 'bo';button.append(original);
   button.append(textElement('span',work.title,'work-card-title'),textElement('span',work.description,'work-card-detail'));
   const extent=storageRead('extent:'+work.id), version=/v\d[\w.-]*$/i.exec(extent?.edition || '')?.[0];
@@ -911,15 +911,15 @@ function workIdentity(entry) {
     author: pick(m.author), translator: pick(m.translator), edition: pick(m['paired-edition'],m.edition,m['translation-edition'],m.source_edition,m.base_edition)
   };
 }
-function readingLabel(entry) { return entry.kind==='catalog' && catalog.get(entry.catalogId).english.kind==='file' ? entry.workTitle : entry.kind==='catalog' ? entry.workTitle+' · '+fileLabel(entry.path) : entry.title; }
+function readingLabel(entry) { return entry.kind==='embedded' && entry.readingTitle ? entry.readingTitle : entry.kind==='catalog' && catalog.get(entry.catalogId).english.kind==='file' ? entry.workTitle : entry.kind==='catalog' ? entry.workTitle+' · '+fileLabel(entry.path) : entry.title; }
 function renderWorkIdentity(entry, titleNode = null) {
-  const identity = workIdentity(entry), specimen = entry.kind === 'specimen', title = entry.title || 'Untitled manuscript';
+  const identity = workIdentity(entry), specimen = entry.kind === 'specimen', title = entry.title || 'Untitled text';
   const heading = titleNode || textElement('h1', title);
   if(entry.kind==='catalog' && catalog.get(entry.catalogId).english.kind==='file')heading.textContent=entry.workTitle;
   heading.classList.add('volume-title'); heading.id ||= 'volume-title';
   if (/[\u0f00-\u0fff]/.test(title))heading.lang='bo';else if (chineseDominant(title)) heading.lang = 'zh';
   const part = entry.number ? fileLabel(entry.path || entry.filename || '') : '';
-  const kicker = specimen ? 'Typography specimen · not a translation' : [identity.work !== title ? identity.work : '', part].filter(Boolean).join(' · ') || 'The manuscript';
+  const kicker = specimen ? 'Typography specimen · not a translation' : [identity.work !== title ? identity.work : '', part].filter(Boolean).join(' · ') || 'The text';
   $('title-content').replaceChildren(textElement('div', kicker, 'volume-kicker'));
   if (identity.chinese && identity.chinese !== title) {
     const original = textElement('p', identity.chinese, 'work-original-title');
@@ -934,7 +934,7 @@ function renderWorkIdentity(entry, titleNode = null) {
   $('bookplate-text').textContent = hanTitle && [...hanTitle].length <= 12 ? hanTitle : 'བོད་ཡིག';
   $('edition-han').lang=entry.sourceLanguage || (/[\u0f00-\u0fff]/.test(hanTitle)?'bo':'zh');
   $('edition-han').textContent = hanTitle || ''; $('edition-han').title = hanTitle;
-  $('edition-label').textContent = specimen ? 'An interface specimen, not source text' : identity.edition || 'The manuscript';
+  $('edition-label').textContent = specimen ? 'An interface specimen, not source text' : identity.edition || 'The text';
   $('toolbar-room').textContent = 'Reader';
   $('toolbar-volume').textContent = readingLabel(entry); $('toolbar-volume').title = readingLabel(entry);
   $('toc-label').textContent = 'In this text'; document.title = readingLabel(entry) + ' · Reader';
@@ -1052,14 +1052,14 @@ async function fetchText(url,parentSignal,onProgress) {
       const error = new Error(response.status === 404 ? 'The file could not be found or is not publicly accessible.' : `The server returned HTTP ${response.status}.`);
       error.status = response.status; throw error;
     }
-    if (Number(response.headers.get('content-length')) > CONFIG.maximumBytes) throw new Error('This file exceeds the 4 MB manuscript limit.');
+    if (Number(response.headers.get('content-length')) > CONFIG.maximumBytes) throw new Error('This file exceeds the 4 MB limit for a text.');
     if (/text\/html/i.test(response.headers.get('content-type') || '')) throw new Error('That address returned a web page, not Markdown. Use the raw file URL.');
     if (response.body?.getReader) {
       const reader = response.body.getReader(), decoder = new TextDecoder(); let total = 0, text = '';
       while (true) {
         const {done,value} = await reader.read(); if (done) break;
         total += value.byteLength;
-        if (total > CONFIG.maximumBytes) { await reader.cancel(); throw new Error('This file exceeds the 4 MB manuscript limit.'); }
+        if (total > CONFIG.maximumBytes) { await reader.cancel(); throw new Error('This file exceeds the 4 MB limit for a text.'); }
         text += decoder.decode(value,{stream:true});
         const expected=Number(response.headers.get('content-length')) || 0;
         onProgress?.({stage:'download',progress:expected?Math.min(.98,total/expected):Math.min(.9,total/(total+65536)),loadedBytes:total,totalBytes:expected || null});
@@ -1067,11 +1067,11 @@ async function fetchText(url,parentSignal,onProgress) {
       onProgress?.({stage:'ready',progress:1,loadedBytes:total,totalBytes:total});return text+decoder.decode();
     }
     const text = await response.text();
-    if (new Blob([text]).size > CONFIG.maximumBytes) throw new Error('This file exceeds the 4 MB manuscript limit.');
+    if (new Blob([text]).size > CONFIG.maximumBytes) throw new Error('This file exceeds the 4 MB limit for a text.');
     return text;
   } catch (error) {
     if (parentSignal?.aborted) throw new DOMException('Cancelled','AbortError');
-    if (controller.signal.aborted) throw new Error('The manuscript request timed out.');
+    if (controller.signal.aborted) throw new Error('The request for the text timed out.');
     throw error;
   } finally { clearTimeout(timeout); parentSignal?.removeEventListener('abort',abort); }
 }
@@ -1084,7 +1084,7 @@ async function getSource(descriptor, signal, onProgress) {
     try { return {text:await fetchText(local,signal,onProgress),sourceURL:local}; }
     catch (error) { if (signal.aborted || !descriptor.sourceURL) throw error; }
   }
-  if (!descriptor.sourceURL) throw new Error("Open this manuscript from a hosted collection, or choose its local Markdown file.");
+  if (!descriptor.sourceURL) throw new Error("Open this text from a hosted collection, or choose its local Markdown file.");
   return {text:await fetchText(descriptor.sourceURL,signal,onProgress),sourceURL:descriptor.sourceURL};
 }
 let loadingTimer=null, loadingPercent=0;
@@ -1093,7 +1093,7 @@ function loadingProgress(value,text) {
   $('loading-progress').setAttribute('aria-valuenow',String(loadingPercent));$('loading-fill').style.transform=`scaleX(${loadingPercent/100})`;$('loading-percent').textContent=loadingPercent+'%';
   if(text)$('loading-text').textContent=text;
 }
-function setBusy(on,text='Opening manuscript…') {
+function setBusy(on,text='Opening the text…') {
   clearTimeout(loadingTimer);state.busy=on;document.body.classList.toggle('loading',on);$('main-content').setAttribute('aria-busy',String(on));
   if(on){loadingPercent=0;$('loading-panel').hidden=false;$('loading-panel').classList.remove('complete');loadingProgress(2,text);announce(text);}
   else {
@@ -1101,7 +1101,12 @@ function setBusy(on,text='Opening manuscript…') {
     $('loading-panel').classList.add('complete');loadingTimer=setTimeout(()=>{$('loading-panel').hidden=true;},reduceMotion.matches?0:220);
   }
 }
-function sourceLanguageLabel() {return state.current?.sourceLanguage==='bo' || !state.current?.sourceLanguage ? 'Tibetan' : 'Source';}
+const languageNames=typeof Intl.DisplayNames==='function' ? new Intl.DisplayNames(['en'],{type:'language'}) : null;
+function languageName(code) {
+  try { const name=languageNames?.of(code); if (name && name.toLowerCase()!==String(code).toLowerCase()) return name; } catch {}
+  return code==='bo' ? 'Tibetan' : 'Source';
+}
+function sourceLanguageLabel() {return languageName(state.current?.sourceLanguage || 'bo');}
 function syncNotesToggle() {
   const button=$('notes-toggle');button.hidden=state.view!=='reading' || !$('manuscript').querySelector('.footnote-ref,.legacy-note-ref,.footnotes');
   button.setAttribute('aria-pressed',String(!!state.settings.notes));button.setAttribute('aria-label',state.settings.notes?'Hide endnotes':'Show endnotes');button.title=state.settings.notes?'Hide endnote links':'Show endnote links';
@@ -1138,10 +1143,10 @@ async function prepareParallel(fragment,candidate,signal) {
     if(schema==='paired-text/2'){
       if(candidate.structureError)throw Object.assign(new Error(candidate.structureError),{side:'translation',line:candidate.structureErrorLine});
       if(compiled.structureError)throw Object.assign(new Error(compiled.structureError),{side:'source',line:compiled.structureErrorLine});
-      if(!candidate.metadata['text-id'] || !compiled.metadata['text-id'])throw new Error('Both paired-text manuscripts must identify their text-id.');
+      if(!candidate.metadata['text-id'] || !compiled.metadata['text-id'])throw new Error('Both paired-text files must identify their text-id.');
       if(!candidate.metadata['source-edition'] || !compiled.metadata.edition || candidate.metadata['source-edition']!==compiled.metadata.edition || (compiled.metadata['source-edition'] && compiled.metadata['source-edition']!==compiled.metadata.edition))throw new Error('The translation and source edition do not match.');
       if(!candidate.metadata['translation-edition'])throw new Error('The paired translation must identify its translation-edition.');
-      if([candidate.metadata.language,compiled.metadata.language].some(language=>!language || !/^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(language)))throw new Error('Both paired-text manuscripts must declare a valid language.');
+      if([candidate.metadata.language,compiled.metadata.language].some(language=>!language || !/^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(language)))throw new Error('Both paired-text files must declare a valid language.');
       const unformatted=compiled.structures.find(pair=>pair.formatCount!==1 || !['prose','verse','h1','h2','h3'].includes(pair.format));
       if(unformatted)throw Object.assign(new Error(`Source pair ${unformatted.id} at line ${unformatted.line} must declare exactly one format: prose, verse, h1, h2, or h3.`),{side:'source',line:unformatted.line});
       const english=candidate.structures,source=compiled.structures;
@@ -1168,13 +1173,13 @@ async function loadDocument(descriptor, options = {}) {
   try {
     const result=await getSource(descriptor,controller.signal,event=>{
       if(loadId!==state.loadId)return;
-      loadingProgress(5+event.progress*70,event.stage==='metadata'?'Checking the manuscript…':event.stage==='ready'?'Preparing the reading page…':event.phase==='verify'?'Verifying the manuscripts…':'Loading English and Tibetan…');
+      loadingProgress(5+event.progress*70,event.stage==='metadata'?'Checking the text…':event.stage==='ready'?'Preparing the reading page…':event.phase==='verify'?'Verifying the texts…':'Loading English and Tibetan…');
     });
     loadingProgress(76,'Setting the English text…');
     await new Promise(resolve=>requestAnimationFrame(resolve));
     if (result.descriptor) descriptor={...descriptor,...result.descriptor};
-    if (new Blob([result.text]).size > CONFIG.maximumBytes) throw new Error('This file exceeds the 4 MB manuscript limit.');
-    if (!result.text.trim()) throw new Error('This manuscript is empty. Add text to the Markdown file and reopen it.');
+    if (new Blob([result.text]).size > CONFIG.maximumBytes) throw new Error('This file exceeds the 4 MB limit for a text.');
+    if (!result.text.trim()) throw new Error('This text is empty. Add text to the Markdown file and reopen it.');
     const compiled = await parseMarkdown(result.text,controller.signal);
     if (loadId !== state.loadId) return false;
     const fragment = safeDOM(compiled.html,result.sourceURL);
@@ -1214,7 +1219,7 @@ async function loadDocument(descriptor, options = {}) {
     // Counts only (never text), so the collection can show each work's extent.
     if (candidate.kind==='catalog') storageWrite('extent:'+candidate.catalogId,{passages:state.parallel?.total || 0,edition:workIdentity(candidate).edition || ''});
 
-    $('end-caption').textContent=candidate.kind === 'specimen' ? 'End of the typography specimen. Open your own manuscript to read.' : 'You have reached the end of this manuscript.';
+    $('end-caption').textContent=candidate.kind === 'specimen' ? 'End of the typography specimen. Open your own text to read.' : `End of ${shortTitle}.`;
     document.title=shortTitle+' · '+CONFIG.title;
     buildOutline(); buildSearchIndex(); updateBookmarkUI(); renderLibrary();
     loadingProgress(100,'Ready to read');setBusy(false);$('manuscript').classList.remove('reader-arriving');void $('manuscript').offsetWidth;$('manuscript').classList.add('reader-arriving');closeNav(false); $('load-message').hidden=true; syncRevisionNotice(); syncNextJuan();
@@ -1238,7 +1243,7 @@ async function loadDocument(descriptor, options = {}) {
     const detail = error instanceof TypeError ? 'The text could not be reached from this browser. This may be a network, privacy, or cross-origin restriction.' : error.message;
     // Published texts come through Reader's own cache, so a retry is the useful advice.
     showError(`${detail} ${descriptor.kind==='catalog' ? 'Try again in a moment.' : 'You can also open a downloaded Markdown file.'}`,true);
-    $('source-status').textContent=state.current ? 'Previous manuscript kept' : 'Source unavailable';
+    $('source-status').textContent=state.current ? 'Previous text kept' : 'Source unavailable';
     announce('The text could not be loaded.');
     state.retryDescriptor=descriptor;
     return false;
@@ -1248,7 +1253,7 @@ $('retry-button').addEventListener('click',() => { if(state.retryDescriptor) loa
 
 async function discoverVolumes() {
   $('refresh-library').disabled=true;
-  $('library-status').textContent='Looking for published manuscripts…';
+  $('library-status').textContent='Looking for published texts…';
   let manifestError=null;
   try {
     let entries;
@@ -1263,7 +1268,7 @@ async function discoverVolumes() {
           item.verified=true; addToLibrary(item);
         }
         state.discovered=true;
-        $('library-status').textContent=`${entries.length} manuscript${entries.length===1?'':'s'} listed in the local manifest.`;
+        $('library-status').textContent=`${entries.length} text${entries.length===1?'':'s'} listed in the local manifest.`;
         renderLibrary(); return;
       } catch(error) { manifestError=error; }
     }
@@ -1273,7 +1278,7 @@ async function discoverVolumes() {
     const files=listing.filter(item=>item.type==='file' && /\.(md|markdown)$/i.test(item.name));
     for (const file of files) { const item=fromProject(file.path); item.verified=true; addToLibrary(item); }
     state.discovered=true;
-    $('library-status').textContent=`${files.length} Markdown manuscript${files.length===1?'':'s'} found in ${CONFIG.directory}/. Local imports stay alongside them.`;
+    $('library-status').textContent=`${files.length} Markdown file${files.length===1?'':'s'} found in ${CONFIG.directory}/. Local imports stay alongside them.`;
     renderLibrary();
   } catch(error) {
     $('library-status').textContent='Repository discovery is unavailable. No additional volumes have been assumed. Import local files, or deploy a reader-manifest.json with the site.';
@@ -1292,7 +1297,7 @@ function openFilePicker() { $('file-input').click(); }
 $('import-library').addEventListener('click',openFilePicker);
 async function importFiles(files) {
   const candidates=[...files].filter(file=>/\.(md|markdown|txt)$/i.test(file.name));
-  if (!candidates.length) return notify('Choose a .md, .markdown, or .txt manuscript.');
+  if (!candidates.length) return notify('Choose a .md, .markdown, or .txt file.');
   const entries=[]; const rejected=[];
   for (const file of candidates) {
     if (file.size>CONFIG.maximumBytes) { rejected.push(file.name); continue; }
@@ -1300,18 +1305,18 @@ async function importFiles(files) {
       path:file.name, title:fileLabel(file.name), number:volumeNumber(file.name), file };
     addToLibrary(descriptor); entries.push(descriptor);
   }
-  if (!entries.length) return notify('These files exceed the 4 MB limit per manuscript.');
+  if (!entries.length) return notify('These files exceed the 4 MB limit for a text.');
   entries.sort((a,b)=>naturalSort.compare(a.filename,b.filename));
   closeDialog('library-dialog'); closeNav(false);
   const ok=await loadDocument(entries[0]); renderLibrary();
-  if (ok && (entries.length>1 || rejected.length)) notify(`${entries.length} manuscript${entries.length===1?'':'s'} opened locally.${rejected.length ? ' Some oversized files were skipped.':''}`);
+  if (ok && (entries.length>1 || rejected.length)) notify(`${entries.length} text${entries.length===1?'':'s'} opened locally.${rejected.length ? ' Some oversized files were skipped.':''}`);
 }
 $('file-input').addEventListener('change',async e=>{ await importFiles(e.target.files); e.target.value=''; });
 $('paste-button').addEventListener('click',async()=>{
   const text=$('paste-input').value;
   if (!text.trim()) { $('library-error').textContent='Paste some Markdown first.'; $('library-error').hidden=false; return; }
-  if (new Blob([text]).size>CONFIG.maximumBytes) { $('library-error').textContent='This text exceeds the 4 MB manuscript limit.'; $('library-error').hidden=false; return; }
-  const descriptor={id:'paste:'+hashText(text),kind:'paste',title:'Pasted manuscript',number:null,text};
+  if (new Blob([text]).size>CONFIG.maximumBytes) { $('library-error').textContent='This text exceeds the 4 MB limit for a text.'; $('library-error').hidden=false; return; }
+  const descriptor={id:'paste:'+hashText(text),kind:'paste',title:'Pasted text',number:null,text};
   closeDialog('library-dialog'); await loadDocument(descriptor);
 });
 let dragDepth=0;
@@ -1340,7 +1345,7 @@ function buildOutline() {
 }
 function renderOutline() {
   $('toc').replaceChildren(); $('toc-count').textContent=String(state.headings.filter(h=>h.level<=2).length).padStart(2,'0');
-  if (!state.headings.length) { $('toc').append(textElement('li','This manuscript has no section headings. Read from the beginning.','toc-empty')); return; }
+  if (!state.headings.length) { $('toc').append(textElement('li','This text has no section headings. Read from the beginning.','toc-empty')); return; }
   state.headings.forEach(heading=>{
     const li=document.createElement('li'), a=document.createElement('a');
     if (heading.level===3) li.className='sub';
@@ -1440,7 +1445,7 @@ function updateProgress() {
     $('toc').querySelectorAll('a').forEach(a=>{ if (a.dataset.target===active?.id) a.setAttribute('aria-current','location'); else a.removeAttribute('aria-current'); });
     $('footer-section').textContent=active?.text || state.current?.title || '';
   }
-  const remaining=state.current ? percent>=99 ? 'End of manuscript' : `About ${Math.max(1,Math.ceil(state.minutes*(1-state.progress)))} min left` : 'Make yourself at home';
+  const remaining=state.current ? percent>=99 ? 'End of the text' : `About ${Math.max(1,Math.ceil(state.minutes*(1-state.progress)))} min left` : 'Make yourself at home';
   if ($('remaining').textContent!==remaining) $('remaining').textContent=remaining;
 }
 window.addEventListener('scroll',()=>{ if (!scrollQueued) { scrollQueued=true; requestAnimationFrame(()=>{ if (!state.restoring && !state.busy && window.scrollY>1) state.hasMoved=true; updateProgress(); savePosition(); scrollQueued=false; }); } },{passive:true});
@@ -1456,7 +1461,7 @@ function updateBookmarkUI() {
   $('resume-button').hidden=!state.bookmark;
 }
 function bookmarkPosition() {
-  if (state.view !== 'reading' || !state.current || state.current.kind==='specimen') return notify('Open a manuscript to save a bookmark.');
+  if (state.view !== 'reading' || !state.current || state.current.kind==='specimen') return notify('Open a text to save a bookmark.');
   const old=state.bookmark, position=currentPosition();
   if (old && Math.abs(old.progress-position.progress)<.01) {
     storageRemove('bookmark:'+state.current.id); updateBookmarkUI(); notify('Bookmark removed.'); return;
@@ -1485,11 +1490,11 @@ function buildSearchIndex() {
     if (!el.id) el.id='passage-'+(++index);
     state.search.push({id:el.id,text,lower:searchForm(text),context});
   });
-  $('search-scope').textContent='In '+($('toolbar-volume').textContent || 'this manuscript');
+  $('search-scope').textContent='In '+($('toolbar-volume').textContent || 'this text');
   $('search-input').value=''; renderSearch();
 }
 function showSearch() {
-  if (state.view !== 'reading' || !state.current) return notify('Open a manuscript to search its text.','Open library',showLibrary);
+  if (state.view !== 'reading' || !state.current) return notify('Open a text to search it.','Open library',showLibrary);
   openDialog('search-dialog'); $('search-input').focus(); $('search-input').select(); renderSearch();
 }
 $('search-trigger').addEventListener('click',showSearch);
@@ -1499,7 +1504,7 @@ $('search-input').addEventListener('input',()=>{ clearTimeout(searchTimer); sear
 function searchForm(text) { return text.toLocaleLowerCase().replace(/[’‘]/g,"'"); }
 function renderSearch() {
   const query=searchForm($('search-input').value.trim()); $('search-results').replaceChildren();
-  if (!query) { $('search-empty').hidden=false; $('search-empty').textContent='Search the current manuscript in English or Tibetan.'; $('search-count').textContent='Type to search'; return; }
+  if (!query) { $('search-empty').hidden=false; $('search-empty').textContent='Search this text in English or Tibetan.'; $('search-count').textContent='Type to search'; return; }
   const matches=state.search.filter(item=>item.lower.includes(query));
   $('search-count').textContent=`${matches.length} passage${matches.length===1?'':'s'}${matches.length>60?' · first 60 shown':''}`;
   $('search-empty').hidden=!!matches.length;
@@ -1660,8 +1665,8 @@ $('note-content').addEventListener('click',e=>{
 
 function showSource() {
   if (!state.current) {
-    $('source-textarea').value='No manuscript is loaded yet.';
-    $('source-description').textContent='Open a manuscript to view its original Markdown and export a reading copy.';
+    $('source-textarea').value='No text is open yet.';
+    $('source-description').textContent='Open a text to view its original Markdown and export a reading copy.';
   } else {
     $('source-textarea').value=state.current.text;
     $('source-description').textContent=state.current.kind==='specimen' ? 'Typography specimen only. This is not a source text or translation.' : state.current.filename || state.current.path || state.current.title;
@@ -1681,19 +1686,21 @@ function download(content,filename,type) {
 }
 $('download-markdown').addEventListener('click',()=>{
   if (!state.current) return;
-  const name=state.current.filename || state.current.path?.split('/').pop() || 'manuscript.md';
+  const name=state.current.filename || state.current.path?.split('/').pop() || 'text.md';
   download(state.current.text,name,'text/markdown;charset=utf-8');
 });
 $('export-reader').addEventListener('click',()=>{
   if (!state.current) return;
   const payload={title:state.current.title,text:state.current.text,number:state.current.number || null,
     path:state.current.path || null,sourceURL:state.current.sourceURL || null,githubURL:state.current.githubURL || null,
-    originalKind:state.current.kind,workTitle:state.current.workTitle || '',chineseTitle:state.current.chineseTitle || '',originalTitle:state.current.originalTitle || '',sourceText:state.current.sourceText || '',sourceDescriptor:state.current.sourceDescriptor || null,sourceLanguage:state.current.sourceLanguage || 'bo',sectionMap:state.current.sectionMap || [],revision:state.current.revision || ''};
+    originalKind:state.current.kind,readingTitle:readingLabel(state.current),workTitle:state.current.workTitle || '',chineseTitle:state.current.chineseTitle || '',originalTitle:state.current.originalTitle || '',sourceText:state.current.sourceText || '',sourceDescriptor:state.current.sourceDescriptor || null,sourceLanguage:state.current.sourceLanguage || 'bo',sectionMap:state.current.sectionMap || [],revision:state.current.revision || ''};
   const escaped=JSON.stringify(payload).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026');
   const copy=appTemplate.replace(/(<script type="application\/json" id="embedded-manuscript">)[\s\S]*?(<\/script>)/,(_,open,close)=>open+escaped+close);
-  const name=state.current.filename?.replace(/\.[^.]+$/,'') || (state.current.number ? 'part-'+String(state.current.number).padStart(2,'0'):'manuscript');
+  // Named after the work, so a saved copy is recognisable among downloads.
+  const slug=readingLabel(state.current).normalize('NFKD').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,'-').replace(/^-+|-+$/g,'').slice(0,80);
+  const name=state.current.filename?.replace(/\.[^.]+$/,'') || slug || 'text';
   download(copy,name+'-reading-copy.html','text/html;charset=utf-8');
-  notify('Reading copy saved with the current manuscript embedded.');
+  notify('Reading copy saved with this text embedded.');
 });
 
 let epubExportDocument = null;
@@ -1701,7 +1708,7 @@ $('export-epub').addEventListener('click', () => {
   if (!state.current || state.busy) return;
   const metadata = state.current.metadata || {};
   epubExportDocument = state.current;
-  $('epub-book-title').value = readingLabel(state.current) || 'Untitled manuscript';
+  $('epub-book-title').value = readingLabel(state.current) || 'Untitled text';
   $('epub-author').value = typeof metadata.author === 'string' ? metadata.author : '';
   const language = metadata.language || metadata.lang || 'en';
   $('epub-language').value = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(language) ? language : 'en';
@@ -1717,7 +1724,7 @@ $('export-epub').addEventListener('click', () => {
 $('epub-form').addEventListener('submit', async event => {
   event.preventDefault();
   if (!state.current || state.current !== epubExportDocument || state.busy) {
-    $('epub-error').textContent = 'The manuscript changed. Close this dialog and start the export again.';
+    $('epub-error').textContent = 'The open text changed. Close this dialog and start the export again.';
     $('epub-error').hidden = false; return;
   }
   const button = $('epub-save'); button.disabled = true; button.setAttribute('aria-busy', 'true');
@@ -1778,7 +1785,7 @@ const SPECIMEN_SOURCE = `# བོད་ཡིག
 དཔེ་ཆ། བོད་ཡིག
 `;
 function specimenDescriptor() {return {id:'specimen',kind:'specimen',title:'The shape of a reading page',number:null,text:SPECIMEN,sourceText:SPECIMEN_SOURCE,sourceLanguage:'bo'};}
-$('demo-button').addEventListener('click',()=>loadDocument(specimenDescriptor()));
+$('demo-button').addEventListener('click',()=>{ if ($('settings-dialog').open) closeDialog('settings-dialog'); loadDocument(specimenDescriptor()); });
 
 document.addEventListener('keydown',e=>{
   const editing=e.target.matches('input,textarea,select,[contenteditable="true"]');

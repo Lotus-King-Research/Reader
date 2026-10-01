@@ -263,7 +263,7 @@ function create(onChange=()=>{},config) {
   }
   async function readFile(endpoint,file,signal,onProgress) {
     if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
-    if(file.size>LIMIT)throw new Error('This text exceeds the 4 MB manuscript limit.');
+    if(file.size>LIMIT)throw new Error('This text exceeds the 4 MB limit for a text.');
     const url=locations(endpoint,file.path).url;let bytes,transferred=0,totalBytes=file.size || null;
     const report=phase=>notifyProgress(onProgress,{loadedBytes:transferred,totalBytes,phase});
     const download=async(target,headers)=>{

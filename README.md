@@ -2,7 +2,7 @@
 
 [Open the reader](https://reader.padma.io) · [Browser checks](https://github.com/Lotus-King-Research/Reader/actions/workflows/ci.yml)
 
-An English–Tibetan reader built from [Lukija](https://github.com/mikkokotila/Lukija), with its history preserved. Published manuscripts stay in their source repositories. The reader loads a configured English translation and Tibetan source together; select a passage, right-click, and choose **Show Tibetan**. Select the Tibetan and choose **Show English** to return. A selection spanning passages switches those passages together. On touch screens, the same menu appears after text selection. Other passages retain their language.
+An English–Tibetan reader built from [Lukija](https://github.com/mikkokotila/Lukija), with its history preserved. Published texts stay in their source repositories. The reader loads a configured English translation and Tibetan source together; select a passage, right-click, and choose **Show Tibetan**. Select the Tibetan and choose **Show English** to return. A selection spanning passages switches those passages together. On touch screens, the same menu appears after text selection. Other passages retain their language.
 
 ## Publish a text
 
@@ -12,12 +12,13 @@ On a feature branch, edit `public/reader-config.json`, add a work, and run `npm 
 {
   "works": [
     {
-      "id": "example-text",
-      "repository": "Lotus-King-Research/Example-Text",
-      "title": "Example text",
-      "originalTitle": "དཔེ་ཆ།",
-      "englishUrl": "https://github.com/Lotus-King-Research/Example-Text/blob/main/translation/en.md",
-      "sourceUrl": "https://github.com/Lotus-King-Research/Example-Text/blob/main/source/bo.md",
+      "id": "dra-thal-gyur",
+      "repository": "Lotus-King-Translation/Dra-Thal-Gyur",
+      "title": "Dra Thal Gyur",
+      "originalTitle": "སྒྲ་ཐལ་འགྱུར།",
+      "description": "Paired Tibetan source and English translation.",
+      "englishUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Dra-Thal-Gyur/main/paired/translation.md",
+      "sourceUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Dra-Thal-Gyur/main/paired/source.md",
       "sourceLanguage": "bo"
     }
   ]
@@ -57,7 +58,7 @@ A missing or invalid Tibetan source leaves the English translation readable and 
 
 Noto Serif Tibetan Regular 2.103 is bundled and embedded into the standalone HTML, including offline exports. It is the current release of the design previously bundled as Noto Sans Tibetan 1.01, whose shaping drew a dotted circle inside Sanskrit stacks such as the title of Dra Thal Gyur. It is subset to the Tibetan block and compressed as WOFF2. The SIL Open Font License, provenance and the exact subsetting command are in `public/fonts/`.
 
-Local Markdown files and pasted texts stay on the device. **Manuscript & source** provides Markdown download, offline HTML, EPUB, and printing. An offline HTML copy includes both loaded manuscripts and the font; section switches work without network access. EPUB includes the currently visible language of each section, with language tags and relevant endnotes regardless of the on-screen notes toggle. Its font choice depends on the reading device; the Tibetan font is not embedded in EPUB. No translation is generated or corrected. The typography specimen is synthetic interface documentation.
+Local Markdown files and pasted texts stay on the device. **Download & export** provides Markdown download, offline HTML, EPUB, and printing. An offline HTML copy includes both loaded texts and the font; section switches work without network access. EPUB includes the currently visible language of each section, with language tags and relevant endnotes regardless of the on-screen notes toggle. Its font choice depends on the reading device; the Tibetan font is not embedded in EPUB. No translation is generated or corrected. The typography specimen is synthetic interface documentation.
 
 Preferences, positions, and bookmarks use browser storage; manuscript bodies are never stored there. Markdown is sanitized before display. Files are limited to 4 MB each. No analytics or account flow is included. The edge Worker keeps no request logs, and its saved copies contain only the published files listed in the configuration.
 

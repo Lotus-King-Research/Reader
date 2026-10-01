@@ -41,7 +41,7 @@
       c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, path.length, true);
       c.setUint32(42, offset, true); central.set(path, 46); directory.push(central);
       offset += header.length + data.length; directoryLength += central.length;
-      if (offset > 100 * 1024 * 1024) throw new Error('This EPUB exceeds the 100 MB export limit. Export a smaller manuscript.');
+      if (offset > 100 * 1024 * 1024) throw new Error('This EPUB exceeds the 100 MB export limit. Export a smaller text.');
     }
     const end = new Uint8Array(22), e = new DataView(end.buffer);
     e.setUint32(0, 0x06054b50, true); e.setUint16(8, entries.length, true); e.setUint16(10, entries.length, true);
@@ -135,7 +135,7 @@ nav ol { padding-left: 1.3em; } nav li { margin: .6em 0; }
     body.querySelectorAll('a').forEach(a => {
       const local = a.getAttribute('data-local-link');
       const href = a.getAttribute('href') || '';
-      if (local) { a.removeAttribute('href'); a.setAttribute('title', `Local manuscript link: ${local}`); }
+      if (local) { a.removeAttribute('href'); a.setAttribute('title', `Local link: ${local}`); }
       else if (href.startsWith('#')) {
         let target; try { target = decodeURIComponent(href.slice(1)); } catch (_) { target = href.slice(1); }
         if (ids.has(target)) a.setAttribute('href', `#${ids.get(target)}`);
@@ -185,9 +185,9 @@ nav ol { padding-left: 1.3em; } nav li { margin: .6em 0; }
     const render = list => `<ol>${list.map(h => `<li><a href="content.xhtml#${escapeXML(h.id)}">${escapeXML(h.text)}</a>${h.children.length ? render(h.children) : ''}</li>`).join('')}</ol>`;
     return render(root);
   }
-  function build({root, title = 'Untitled manuscript', author = '', language = 'en', source = '', identifier = '', date = new Date(), specimen = false}) {
+  function build({root, title = 'Untitled text', author = '', language = 'en', source = '', identifier = '', date = new Date(), specimen = false}) {
     if (!root || typeof root.cloneNode !== 'function') throw new TypeError('An already-sanitized manuscript DOM is required.');
-    title = clean(title).trim().slice(0, 500) || 'Untitled manuscript';
+    title = clean(title).trim().slice(0, 500) || 'Untitled text';
     author = clean(author).trim().slice(0, 500); language = validLanguage(language);
     if (!(date instanceof Date) || !Number.isFinite(date.getTime())) throw new TypeError('A valid export date is required.');
     const uuid = globalThis.crypto?.randomUUID?.() || 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
