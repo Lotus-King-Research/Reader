@@ -4048,7 +4048,8 @@ const CONFIG = Object.freeze({
   manifest: 'reader-manifest.json',
   maximumBytes: 4 * 1024 * 1024,
   fetchTimeout: 12000,
-  parseTimeout: 6500,
+  parseTimeout: 6500, // Plus parsePerMegabyte for each megabyte of source.
+  parsePerMegabyte: 8000,
   storagePrefix: 'padma-reader:v1:' // Legacy key preserves existing preferences and bookmarks; never stores manuscripts.
 });
 const $ = id => document.getElementById(id);
@@ -4155,11 +4156,24 @@ function createCompiler(marked) {
   let definitions, ordered, counts;
   const escape = text => String(text).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   function noteNumber(label) { if (!ordered.includes(label)) ordered.push(label); return ordered.indexOf(label) + 1; }
+  // Marked 4 drains its inline queue with Array#shift, which copies the rest of the
+  // queue on every call and becomes quadratic for long manuscripts. Walk it by index
+  // instead; the order, and therefore the output, is unchanged.
+  marked.Lexer.prototype.lex = function lex(src) {
+    src = src.replace(/\r\n|\r/g, '\n');
+    this.blockTokens(src, this.tokens);
+    for (let i = 0; i < this.inlineQueue.length; i++) this.inlineTokens(this.inlineQueue[i].src, this.inlineQueue[i].tokens);
+    this.inlineQueue = [];
+    return this.tokens;
+  };
   marked.use({ gfm: true, breaks: false, mangle: false, smartypants: false,
     headerIds: true,
     extensions: [
       { name: 'readerNoteDefinition', level: 'block',
-        start(src) { const m = /^ {0,3}\[\^[^\]\n]+\]:/m.exec(src); return m?.index; },
+        // Marked uses start() only to cut the current paragraph, and a paragraph
+        // ends at the first blank line. Scanning the whole remaining document at
+        // every block made parsing quadratic in the length of the manuscript.
+        start(src) { const end = src.search(/\n[ \t]*\n/); const m = /^ {0,3}\[\^[^\]\n]+\]:/m.exec(end < 0 ? src : src.slice(0, end)); return m?.index; },
         tokenizer(src) {
           const first = /^ {0,3}\[\^([^\]\n]+)\]:[^\S\n]*([^\n]*)(?:\n|$)/.exec(src);
           if (!first) return;
@@ -4277,9 +4291,13 @@ function parseMarkdown(source, signal) {
     const abort = () => finish(new DOMException('Cancelled', 'AbortError'));
     const fallback = () => {
       worker?.terminate(); if (blobURL) { URL.revokeObjectURL(blobURL); blobURL = null; }
-      if (source.length > 180000) return finish(new Error('This browser blocks background parsing. Open the reader in a browser with Web Worker support, or split this large manuscript into smaller files.'));
-      try { mainCompiler ||= createCompiler(window.marked); finish(null, mainCompiler(source)); }
-      catch (error) { finish(error); }
+      if (source.length > CONFIG.maximumBytes) return finish(new Error('This browser blocks background parsing. Open the reader in a browser with Web Worker support, or split this large manuscript into smaller files.'));
+      // Parsing is linear, so even a full-size manuscript parses on the main thread.
+      setTimeout(() => {
+        if (signal?.aborted) return;
+        try { mainCompiler ||= createCompiler(window.marked); finish(null, mainCompiler(source)); }
+        catch (error) { finish(error); }
+      }, 0);
     };
     signal?.addEventListener('abort', abort, {once:true});
     try {
@@ -4287,7 +4305,7 @@ function parseMarkdown(source, signal) {
       const workerCode = engine + '\nconst compile = (' + createCompiler.toString() + ')(self.marked);\nself.onmessage = e => { try { self.postMessage({ok:true, result:compile(e.data)}); } catch(error) { self.postMessage({ok:false, error:String(error.message || error)}); } };';
       blobURL = URL.createObjectURL(new Blob([workerCode], {type:'application/javascript'}));
       worker = new Worker(blobURL);
-      timer = setTimeout(() => finish(new Error('This manuscript took too long to parse. Check for unusually complex Markdown or split it into smaller volumes.')), CONFIG.parseTimeout);
+      timer = setTimeout(() => finish(new Error('This manuscript took too long to parse. Check for unusually complex Markdown or split it into smaller volumes.')), CONFIG.parseTimeout + CONFIG.parsePerMegabyte * source.length / 1048576);
       worker.onmessage = event => event.data.ok ? finish(null,event.data.result) : finish(new Error(event.data.error));
       worker.onerror = () => fallback();
       worker.postMessage(source);
@@ -4600,8 +4618,11 @@ function formatCitationLayers(fragment) {
     formatParagraphRun(run);
   }
 }
+function citationLayersApply(entry=state.current) { return entry?.metadata?.schema !== 'paired-text/2'; }
+function syncCitationSetting() { $('auto-citations').closest('.settings-group').hidden = !citationLayersApply(); }
 function rebuildCitationLayers() {
-  if (state.view !== 'reading' || !state.current || !state.sourceFragment || state.renderedCitations===state.settings.citations) return;
+  // paired-text/2 never infers citations, so toggling the setting cannot change the page.
+  if (state.view !== 'reading' || !state.current || !citationLayersApply() || !state.sourceFragment || state.renderedCitations===state.settings.citations) return;
   const position=currentPosition(),sourceSections=new Set(state.parallel?.pairs.filter(pair=>pair.sourceVisible).map(pair=>pair.section.id) || []);
   const fragment=state.sourceFragment.cloneNode(true);
   prepareContent(fragment,state.current.metadata || {},state.current);
@@ -4869,7 +4890,7 @@ function returnToReading(options = {}) {
   if(state.busy){state.controller?.abort();++state.loadId;setBusy(false);}
   if (!state.current) { showLibrary(); return; }
   if (state.view === 'reading') { closeNav(false); return; }
-  closeNav(false); setView('reading'); state.headings = state.readingHeadings; renderOutline();
+  closeNav(false); setView('reading'); syncCitationSetting(); state.headings = state.readingHeadings; renderOutline();
   $('toolbar-room').textContent = 'Reader';
   $('toolbar-volume').textContent = readingLabel(state.current); $('toolbar-volume').title = readingLabel(state.current);
   document.title = readingLabel(state.current) + ' · Reader'; updateBookmarkUI();
@@ -5047,7 +5068,7 @@ async function prepareParallel(fragment,candidate,signal) {
     }
     const original=safeDOM(compiled.html,candidate.sourceDescriptor?.sourceURL || candidate.sourceTextURL);
     prepareContent(original,compiled.metadata,candidate.sourceDescriptor || candidate);
-    const parallelFragment=original.cloneNode(true),draft=fragment.cloneNode(true);
+    const parallelFragment=citationLayersApply(candidate) ? original.cloneNode(true) : null,draft=fragment.cloneNode(true);
     const parallel=pairSections(draft,original,candidate);fragment.replaceChildren(draft);
     return {parallel,parallelFragment};
   } catch(error){if(signal?.aborted)throw error;candidate.sourceError=error.message;candidate.sourceText='';delete candidate.sourceStructures;return unpaired();}
@@ -5070,7 +5091,8 @@ async function loadDocument(descriptor, options = {}) {
     const compiled = await parseMarkdown(result.text,controller.signal);
     if (loadId !== state.loadId) return false;
     const fragment = safeDOM(compiled.html,result.sourceURL);
-    const sourceFragment = fragment.cloneNode(true);
+    // The pristine copy exists only to rebuild citation layers when that setting changes.
+    const sourceFragment = compiled.metadata.schema === 'paired-text/2' ? null : fragment.cloneNode(true);
     const prepared = prepareContent(fragment,compiled.metadata,descriptor);
     const title = prepared.title;
     const candidate = {...descriptor, title, text:result.text, sourceText:result.sourceText || '',sourceDescriptor:result.sourceDescriptor || null,sourceError:result.sourceError || '', renderedBase:result.sourceURL, metadata:compiled.metadata, frontmatter:compiled.frontmatter, structures:compiled.structures, structureError:compiled.structureError, loaded:true};
@@ -5085,7 +5107,7 @@ async function loadDocument(descriptor, options = {}) {
     state.current=candidate;state.sourceFragment=sourceFragment;state.parallel=paired.parallel;state.parallelFragment=paired.parallelFragment;state.renderedCitations=state.settings.citations;
     $('manuscript').replaceChildren(fragment);$('manuscript').dataset.alignment=isPairedSchema(candidate.metadata?.schema)?'anchors':'headings';$('manuscript').dataset.schema=candidate.metadata?.schema || '';
     $('paired-status').textContent=candidate.sourceError?'Tibetan source unavailable. '+candidate.sourceError:'';
-    setView('reading');
+    setView('reading'); syncCitationSetting();
     renderWorkIdentity(candidate, prepared.titleNode);
     const shortTitle = readingLabel(candidate);
     $('source-kind').textContent = candidate.kind === 'specimen' ? 'Design specimen' : candidate.kind === 'embedded' ? 'Offline reading copy' : candidate.kind === 'local' || candidate.kind === 'paste' ? 'Local manuscript' : 'Public manuscript';
@@ -5413,7 +5435,7 @@ function applySettings(persist=true) {
   document.documentElement.style.setProperty('--leading',String(settings.leading));
   document.querySelector('meta[name="theme-color"]').content=settings.theme==='ink' ? '#202824':settings.theme==='mist' ? '#edf0ed':'#f5f1e8';
   $('font-size').value=settings.size; $('size-value').textContent=settings.size+' px';
-  $('line-height').value=settings.leading; $('leading-value').textContent=settings.leading.toFixed(2);
+  $('line-height').value=settings.leading; previewSliders();
   $$('.theme-choice').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.theme===settings.theme)));
   $$('[data-measure]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.measure)===settings.measure)));
   $('auto-citations').checked=settings.citations;setNotesVisible(settings.notes,false);
@@ -5423,8 +5445,17 @@ function applySettings(persist=true) {
 $('settings-trigger').addEventListener('click',()=>openDialog('settings-dialog'));
 $$('.theme-choice').forEach(b=>b.addEventListener('click',()=>{state.settings.theme=b.dataset.theme;applySettings();}));
 $$('[data-measure]').forEach(b=>b.addEventListener('click',()=>{state.settings.measure=Number(b.dataset.measure);applySettings();}));
-$('font-size').addEventListener('input',e=>{state.settings.size=Number(e.target.value);applySettings();});
-$('line-height').addEventListener('input',e=>{state.settings.leading=Number(e.target.value);applySettings();});
+// Each value change relays out the whole book (hundreds of milliseconds on a phone),
+// so dragging previews the value and the book is set once, on release.
+function previewSliders() {
+  const size=Number($('font-size').value), leading=Number($('line-height').value);
+  $('size-value').textContent=size+' px'; $('leading-value').textContent=leading.toFixed(2);
+  const preview=document.querySelector('.settings-preview'); if (preview) { preview.style.fontSize=size+'px'; preview.style.lineHeight=String(leading); }
+}
+$('font-size').addEventListener('input',previewSliders);
+$('line-height').addEventListener('input',previewSliders);
+$('font-size').addEventListener('change',e=>{state.settings.size=Number(e.target.value);applySettings();});
+$('line-height').addEventListener('change',e=>{state.settings.leading=Number(e.target.value);applySettings();});
 $('auto-citations').addEventListener('change',e=>{state.settings.citations=e.target.checked;applySettings();});
 $('reset-settings').addEventListener('click',()=>{state.settings={...defaults};applySettings();});
 

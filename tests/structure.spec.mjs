@@ -246,3 +246,9 @@ test('paired-text/2 MD work codes retain the sanitizer prefix and switch canonic
   await switchPair(page,heading); await expect(pair(page,heading.id).locator('.english-passage h1')).toBeVisible();
   await expect(page.locator('#md-md-000001')).toHaveCount(1); await expect(page.locator('#md-000001')).toHaveCount(0);
 });
+test('paired-text/2 hides the citation setting, which cannot change its layout', async ({page}) => {
+  await fixture(page);
+  await page.click('#settings-trigger');
+  await expect(page.locator('#settings-dialog')).toBeVisible();
+  await expect(page.locator('#auto-citations')).toBeHidden();
+});
