@@ -1,11 +1,11 @@
 import {readFile, writeFile} from 'node:fs/promises';
 const root=new URL('../',import.meta.url), path=new URL('public/index.html',root);
 let html=await readFile(path,'utf8');
-for (const [name,source] of [['epub','src/epub.js'],['catalog','src/catalog.js'],['parallel','src/parallel.js']]) {
+for (const [name,source,id] of [['epub','src/epub.js'],['catalog','src/catalog.js'],['parallel','src/parallel.js'],['app','src/app.js','reader-code']]) {
   const engine=await readFile(new URL(source,root),'utf8');
   if (/<\/script/i.test(engine)) throw new Error(`Invalid embedded ${name} source.`);
-  const slot=new RegExp(`(<script id="${name}-engine">)[\\s\\S]*?(<\\/script>)`);
-  if (!slot.test(html)) throw new Error(`Missing ${name} engine slot in public/index.html.`);
+  const slot=new RegExp(`(<script id="${id || name+'-engine'}">)[\\s\\S]*?(<\\/script>)`);
+  if (!slot.test(html)) throw new Error(`Missing ${name} slot in public/index.html.`);
   html=html.replace(slot,(_,open,close)=>open+'\n'+engine+'\n'+close);
 }
 const config=JSON.parse(await readFile(new URL('public/reader-config.json',root),'utf8'));
