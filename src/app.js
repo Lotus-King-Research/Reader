@@ -26,7 +26,7 @@ const githubBase = rawBase ? `https://github.com/${CONFIG.owner}/${CONFIG.reposi
 const apiDirectory = rawBase ? `https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repository}/contents/${CONFIG.directory}?ref=${encodeURIComponent(CONFIG.branch)}` : null;
 const naturalSort = new Intl.Collator(undefined, {numeric: true, sensitivity: 'base'});
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
-const defaults = { theme: 'paper', size: innerWidth < 601 ? 18 : 20, measure: 720, leading: 1.88, citations: true, notes: false };
+const defaults = { theme: 'paper', size: innerWidth < 601 ? 18 : 20, measure: 720, leading: 1.88, citations: true, notes: false, shortcuts: true };
 const state = { view: 'collection', readingPosition: null, readingHeadings: [], current: null, library: [], headings: [], search: [], settings: {...defaults}, busy: false,
   loadId: 0, controller: null, parser: null, activeHeading: null, progress: 0, minutes: 0,
   bookmark: null, canStore: true, restoring: false, lastSave: 0, toastTimer: null,
@@ -1134,8 +1134,48 @@ function revealPassage(el) {
   else if(pair && el.closest('.english-passage'))pair.show(false,false);
 }
 function isPairedSchema(schema){return schema==='paired-text/1' || schema==='paired-text/2';}
+function switchKey(entry=state.current) {
+  const m=entry?.metadata || {};
+  return isPairedSchema(m.schema) && m['text-id'] ? 'switched:'+m['text-id']+'@'+(m['paired-edition'] || m['translation-edition'] || '') : '';
+}
+// Which passages the reader turned to the source, by pair ID only (never text).
+function rememberSwitches() {
+  const key=switchKey(); if (!key || !state.parallel) return;
+  const ids=state.parallel.pairs.filter(pair=>pair.sourceVisible).map(pair=>pair.section.id);
+  if (ids.length) { storageWrite(key,ids.slice(0,10000)); dismissSourceHint(); } else storageRemove(key);
+  syncSwitchedControl();
+}
+function restoreSwitches() {
+  const key=switchKey(), ids=key ? storageRead(key) : null;
+  if (!Array.isArray(ids) || !ids.length || !state.parallel) return 0;
+  const wanted=new Set(ids); let count=0;
+  for (const pair of state.parallel.pairs) if (wanted.has(pair.section.id) && !pair.emptySource) { pair.show(true,false,true); count++; }
+  return count;
+}
+function syncSwitchedControl() {
+  const count=state.parallel?.pairs.filter(pair=>pair.sourceVisible).length || 0;
+  $('switched-group').hidden=!count;
+  $('switched-count').textContent=`${count.toLocaleString('en')} passage${count===1?' is':'s are'} shown in ${sourceLanguageLabel()}.`;
+}
+$('show-all-english').addEventListener('click',()=>{
+  const position=currentPosition();
+  state.parallel?.pairs.forEach(pair=>{ if (pair.sourceVisible) pair.show(false,false,true); });
+  restorePosition(position); rememberSwitches(); announce('All passages are shown in English.');
+});
+// A one-time note that every passage has its source beside it.
+function sourceHintText() {
+  const language=sourceLanguageLabel(), touch=matchMedia('(hover: none)').matches;
+  return touch ? `Every passage has its ${language} beside it. Select a passage and choose Show ${language}.`
+    : `Every passage has its ${language} beside it. Select a passage and right-click${state.settings.shortcuts!==false ? ', or press T,' : ''} to read it in ${language}.`;
+}
+function syncSourceHint() {
+  const show=state.view==='reading' && state.current?.kind!=='specimen' && !!state.parallel?.pairs.length && !storageRead('hint:source');
+  $('source-hint').hidden=!show; if (show) $('source-hint-text').textContent=sourceHintText();
+}
+function dismissSourceHint() { if (!storageRead('hint:source')) storageWrite('hint:source',1); $('source-hint').hidden=true; }
+$('source-hint-dismiss').addEventListener('click',()=>{ dismissSourceHint(); $('manuscript').focus?.({preventScroll:true}); });
 function pairSections(fragment,original,candidate) {
-  const parallel=ReaderParallel.build(fragment,original,{language:candidate.sourceLanguage || 'bo',sectionMap:candidate.sectionMap || [],anchorAlignment:isPairedSchema(candidate.metadata?.schema),structures:candidate.sourceStructures || [],onToggle:()=>updateProgress()});
+  const parallel=ReaderParallel.build(fragment,original,{language:candidate.sourceLanguage || 'bo',sectionMap:candidate.sectionMap || [],anchorAlignment:isPairedSchema(candidate.metadata?.schema),structures:candidate.sourceStructures || [],onToggle:()=>{updateProgress();rememberSwitches();}});
   parallel.setNotesVisible(state.settings.notes);return parallel;
 }
 async function prepareParallel(fragment,candidate,signal) {
@@ -1206,7 +1246,7 @@ async function loadDocument(descriptor, options = {}) {
     // Publish identity and document together, only after the entire pair is ready.
     if(candidate.kind!=='specimen')addToLibrary(candidate);
     state.current=candidate;state.sourceFragment=sourceFragment;state.parallel=paired.parallel;state.parallelFragment=paired.parallelFragment;state.renderedCitations=state.settings.citations;
-    $('manuscript').replaceChildren(fragment);$('manuscript').dataset.alignment=isPairedSchema(candidate.metadata?.schema)?'anchors':'headings';$('manuscript').dataset.schema=candidate.metadata?.schema || '';
+    $('manuscript').replaceChildren(fragment);const restoredSwitches=restoreSwitches();$('manuscript').dataset.alignment=isPairedSchema(candidate.metadata?.schema)?'anchors':'headings';$('manuscript').dataset.schema=candidate.metadata?.schema || '';
     $('paired-status').replaceChildren(candidate.sourceError?'Tibetan source unavailable. '+candidate.sourceError:'');
     const at=candidate.sourceErrorAt, lineURL=at && (at.side==='source' ? candidate.sourceGithubURL || candidate.sourceDescriptor?.githubURL : candidate.githubURL);
     if(lineURL && /^https:\/\/github\.com\//.test(lineURL)){
@@ -1252,7 +1292,8 @@ async function loadDocument(descriptor, options = {}) {
         notify(position.label ? `Back at ${position.label}.` : 'Back where you left off.','Start from the beginning',() => { window.scrollTo({top:0,behavior:'instant'}); savePosition(true); },6000);
       });
     }
-    announce(`${shortTitle} opened. ${state.headings.length} sections.`);
+    syncSwitchedControl(); syncSourceHint();
+    announce(`${shortTitle} opened. ${state.headings.length} sections.${restoredSwitches ? ` ${restoredSwitches} passage${restoredSwitches===1?'':'s'} in ${sourceLanguageLabel()}, as you left ${restoredSwitches===1?'it':'them'}.` : ''}`);
     return true;
   } catch(error) {
     if (loadId !== state.loadId || error.name === 'AbortError') return false;
@@ -1368,7 +1409,7 @@ function renderOutline() {
     if (heading.level===3) li.className='sub';
     a.href='#'+heading.id; a.dataset.target=heading.id;
     a.append(textElement('span',heading.text));
-    a.addEventListener('click',e=>{ e.preventDefault(); closeNav(false); jumpTo(heading.id); });
+    a.addEventListener('click',e=>{ e.preventDefault(); closeNav(false); jumpTo(heading.id,{history:'replace'}); });
     li.append(a); $('toc').append(li);
   });
   state.activeHeading=null; updateProgress();
@@ -1379,12 +1420,41 @@ function jumpTo(id, options={}) {
   el.scrollIntoView({behavior:reduceMotion.matches || options.instant ? 'instant':'smooth',block:'start'});
   if (options.flash) { el.classList.remove('search-flash'); void el.offsetWidth; el.classList.add('search-flash'); }
   if (options.focus !== false) { el.setAttribute('tabindex','-1'); el.focus({preventScroll:true}); }
-  if (state.view === 'reading' && options.history !== false && state.current?.kind !== 'local' && state.current?.kind !== 'paste' && state.current?.kind !== 'specimen') updateLocation(state.current,'#'+id,false);
+  if (state.view === 'reading' && options.history !== false && linkable()) {
+    // The entry being left keeps the exact reading place, so Back returns to it.
+    if (options.history !== 'replace') syncHash();
+    updateLocation(state.current,'#'+(hashFor(el) || id),options.history === 'replace');
+  }
   return true;
 }
+// Pair IDs resolve in any case, with or without the md- prefix: #DTG-000455, #md-dtg-000455.
+function resolveTarget(raw) {
+  let id=String(raw || '').replace(/^#/,''); try { id=decodeURIComponent(id); } catch (_) {}
+  if (!id) return '';
+  for (const candidate of [id,'md-'+id,id.toLowerCase(),'md-'+id.toLowerCase()]) if ($(candidate)) return candidate;
+  return '';
+}
+// The shortest stable address for an element: a pair ID as authored, or a heading.
+function hashFor(el) {
+  const section=el?.closest?.('.parallel-section');
+  if (section?.id) return isPairedSchema(state.current?.metadata?.schema) && section.id.startsWith('md-') ? section.id.slice(3).toUpperCase() : section.id;
+  if (el?.id && !/^passage-\d+$/.test(el.id)) return el.id;
+  return state.activeHeading || '';
+}
+function linkable(entry=state.current) { return !!entry && !['local','paste','specimen'].includes(entry.kind) && /^https?:$/.test(location.protocol); }
+let hashTimer=0;
+// The address follows reading, so a copied URL or a reload lands on the passage.
+function syncHash() {
+  clearTimeout(hashTimer);
+  if (state.view!=='reading' || state.busy || !linkable()) return;
+  const hash=window.scrollY<40 ? '' : hashFor(state.place?.el);
+  const current=location.hash.replace(/^#/,'');
+  if (current===hash || hash && resolveTarget(current)===resolveTarget(hash)) return;
+  try { const url=new URL(location.href); url.hash=hash; history.replaceState(history.state,'',url); } catch (_) {}
+}
 function goToHash(hash, update=true) {
-  let id=hash.replace(/^#/,''); try { id=decodeURIComponent(id); } catch (_) {}
-  return jumpTo($(id) ? id : 'md-'+id,{instant:!update,history:update});
+  const id=resolveTarget(hash);
+  return id ? jumpTo(id,{instant:!update,history:update}) : false;
 }
 function updateLocation(descriptor, hash='', replace=false, view='reading') {
   if (!/^https?:$/.test(location.protocol)) return;
@@ -1417,8 +1487,10 @@ window.addEventListener('popstate', event => {
     if (!descriptor && params.get('file')) descriptor = fromProject(params.get('file'));
     if (!descriptor) { showCollection({updateURL:false}); return; }
     if (state.current?.id === descriptor.id) {
+      const wasReading=state.view==='reading';
       returnToReading({updateURL:false,focus:false});
       if (location.hash) goToHash(location.hash,false);
+      else if (wasReading) window.scrollTo({top:0,behavior:'instant'});
     } else loadDocument(descriptor,{section:location.hash,updateURL:false});
   } catch (error) { showError(error.message,false); }
 });
@@ -1447,7 +1519,7 @@ function placeAtReadingLine() {
     if (!main.contains(el)) continue;
     // A pair section's ID is part of the edition; other IDs are the nearest stable target.
     const keyed=el.closest('section[id]') || el.closest('[id]'); const anchor=keyed && main.contains(keyed) && keyed!==main ? keyed : null;
-    return {el, offset:el.getBoundingClientRect().top, anchor:anchor?.id || '', anchorOffset:anchor ? anchor.getBoundingClientRect().top : 0};
+    return {el, offset:el.getBoundingClientRect().top, y:window.scrollY, anchor:anchor?.id || '', anchorOffset:anchor ? anchor.getBoundingClientRect().top : 0};
   }
   return null;
 }
@@ -1458,8 +1530,10 @@ function currentPosition() {
     anchor:place?.anchor || '', anchorOffset:place?.anchorOffset || 0, label:heading ? navLabel(heading.text) : '', at:Date.now()};
 }
 // Keeps the passage being read where it is while the layout around it changes.
-function pinPlace() {
+function pinPlace({ifUnmoved=false}={}) {
   const place=state.place; if (state.view!=='reading' || !place || !rendered(place.el)) return;
+  // A late font swap must not pull back a reader who has scrolled since the place was taken.
+  if (ifUnmoved && Math.abs(window.scrollY-place.y)>1) return;
   const delta=place.el.getBoundingClientRect().top-place.offset; if (Math.abs(delta)<1) return;
   state.restoring=true; window.scrollTo({top:Math.max(0,window.scrollY+delta),behavior:'instant'}); state.restoring=false;
 }
@@ -1498,7 +1572,7 @@ function updateProgress() {
   const remaining=state.current ? percent>=99 ? 'End of the text' : `About ${Math.max(1,Math.ceil(state.minutes*(1-state.progress)))} min left` : 'Make yourself at home';
   if ($('remaining').textContent!==remaining) $('remaining').textContent=remaining;
 }
-window.addEventListener('scroll',()=>{ if (!scrollQueued) { scrollQueued=true; requestAnimationFrame(()=>{ if (!state.restoring && !state.busy && window.scrollY>1) state.hasMoved=true; if (!state.restoring && !document.body.classList.contains('dialog-open')) state.place=placeAtReadingLine() || state.place; updateProgress(); savePosition(); scrollQueued=false; }); } },{passive:true});
+window.addEventListener('scroll',()=>{ if (!scrollQueued) { scrollQueued=true; requestAnimationFrame(()=>{ if (!state.restoring && !state.busy && window.scrollY>1) state.hasMoved=true; if (!state.restoring && !document.body.classList.contains('dialog-open')) { state.place=placeAtReadingLine() || state.place; clearTimeout(hashTimer); hashTimer=setTimeout(syncHash,500); } updateProgress(); savePosition(); scrollQueued=false; }); } },{passive:true});
 window.addEventListener('resize',()=>{ if (innerWidth>920) closeNav(false); syncSidebarAccess(); updateProgress(); });
 let readingWidth=0;
 new ResizeObserver(entries=>{
@@ -1507,7 +1581,7 @@ new ResizeObserver(entries=>{
   if (width!==readingWidth) { const first=!readingWidth; readingWidth=width; if (!first) pinPlace(); }
   requestAnimationFrame(updateProgress);
 }).observe($('main-content'));
-document.fonts?.addEventListener?.('loadingdone',()=>pinPlace());
+document.fonts?.addEventListener?.('loadingdone',()=>pinPlace({ifUnmoved:true}));
 window.addEventListener('pagehide',()=>savePosition(true));
 document.addEventListener('visibilitychange',()=>{ if (document.hidden) savePosition(true); });
 function updateBookmarkUI() {
@@ -1570,7 +1644,7 @@ function renderSearch() {
     button.append(textElement('span',item.context,'result-section'));
     const excerpt=document.createElement('span'); excerpt.className='result-excerpt';
     excerpt.append(document.createTextNode((start?'…':'')+item.text.slice(start,at)),textElement('mark',item.text.slice(at,at+query.length)),document.createTextNode(item.text.slice(at+query.length,end)+(end<item.text.length?'…':'')));
-    button.append(excerpt); button.addEventListener('click',()=>{ closeDialog('search-dialog'); jumpTo(item.id,{flash:true,history:false}); }); li.append(button); $('search-results').append(li);
+    button.append(excerpt); button.addEventListener('click',()=>{ closeDialog('search-dialog'); jumpTo(item.id,{flash:true}); }); li.append(button); $('search-results').append(li);
   }
 }
 $('search-input').addEventListener('keydown',e=>{
@@ -1600,6 +1674,7 @@ function applySettings(persist=true) {
   $$('.theme-choice').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.theme===settings.theme)));
   $$('[data-measure]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.measure)===settings.measure)));
   $('auto-citations').checked=settings.citations;setNotesVisible(settings.notes,false);
+  settings.shortcuts=settings.shortcuts!==false; $('single-key-shortcuts').checked=settings.shortcuts;
   if (persist) storageWrite('settings',settings);
   rebuildCitationLayers(); pinPlace();
 }
@@ -1618,6 +1693,7 @@ $('line-height').addEventListener('input',previewSliders);
 $('font-size').addEventListener('change',e=>{state.settings.size=Number(e.target.value);applySettings();});
 $('line-height').addEventListener('change',e=>{state.settings.leading=Number(e.target.value);applySettings();});
 $('auto-citations').addEventListener('change',e=>{state.settings.citations=e.target.checked;applySettings();});
+$('single-key-shortcuts').addEventListener('change',e=>{state.settings.shortcuts=e.target.checked;applySettings();syncSourceHint();});
 $('reset-settings').addEventListener('click',()=>{state.settings={...defaults};applySettings();});
 
 function handleManuscriptClick(e) {
@@ -1656,14 +1732,37 @@ function handleManuscriptClick(e) {
 }
 $('manuscript').addEventListener('click',handleManuscriptClick);
 
-let selectedPassages=[],selectedCopy='',selectionLanguage=false,selectionScroll=0;
+let selectedPassages=[],selectedCopy='',selectionLanguage=false,selectionScroll=0,menuReturn=null;
+function activePair() {
+  const pairs=state.parallel?.pairs, sections=state.parallel?.sections; if (!pairs?.length) return null;
+  let section=placeAtReadingLine()?.el?.closest('.parallel-section');
+  if (!section) {
+    // On a chapter heading or in a gap: the first passage starting below the reading line.
+    let low=0, high=sections.length;
+    while (low<high) { const mid=(low+high)>>1; if (sections[mid].getBoundingClientRect().top<READING_LINE) low=mid+1; else high=mid; }
+    section=sections[low]?.getBoundingClientRect().top<innerHeight ? sections[low] : sections[low-1];
+  }
+  return pairs.find(pair=>pair.section===section) || null;
+}
+function passageText(pair) { return (pair.sourceVisible ? pair.source : pair.english).innerText.trim(); }
+function toggleActivePassage() {
+  if (state.view!=='reading') return;
+  const pair=activePair();
+  if (!pair || pair.emptySource) { announce(`This passage has no ${sourceLanguageLabel()}.`); return; }
+  pair.show(!pair.sourceVisible,true);
+  pair.section.setAttribute('tabindex','-1'); pair.section.focus({preventScroll:true});
+  announce(`${pair.sourceVisible?sourceLanguageLabel():'English'} shown for this passage.`);
+}
 function closeSelectionMenu(){ if ($('selection-menu').hidden && !selectedPassages.length) return; $('selection-menu').hidden=true;selectedPassages=[]; }
 function showSelectionMenu(x,y,focus=false) {
   const selection=window.getSelection();if(!selection || selection.isCollapsed || !selection.rangeCount)return false;
   const range=selection.getRangeAt(0),article=$('manuscript');
   if(!article.contains(range.startContainer) || !article.contains(range.endContainer))return false;
-  selectedCopy=selection.toString();if(!selectedCopy.trim())return false;
-  selectedPassages=(state.parallel?.pairsForRange(range) || []).filter(pair=>!pair.emptySource);
+  const text=selection.toString();if(!text.trim())return false;
+  menuReturn=null;return openPassageMenu(state.parallel?.pairsForRange(range) || [],text,x,y,focus);
+}
+function openPassageMenu(pairs,text,x,y,focus=false) {
+  selectedCopy=text;selectedPassages=pairs.filter(pair=>!pair.emptySource);
   selectionLanguage=selectedPassages.length>0 && !selectedPassages.every(pair=>pair.sourceVisible);
   const language=$('selection-language');language.hidden=!selectedPassages.length;language.textContent='Show '+(selectionLanguage?sourceLanguageLabel():'English');
   selectionScroll=scrollY;const menu=$('selection-menu');menu.hidden=false;menu.style.left='0px';menu.style.top='0px';
@@ -1676,7 +1775,14 @@ $('manuscript').addEventListener('contextmenu',event=>{
 document.addEventListener('keydown',event=>{
   if(!event.target.matches('input,textarea,select,[contenteditable="true"]') && (event.key==='ContextMenu' || event.shiftKey && event.key==='F10')){
     const selection=window.getSelection(),rect=selection?.rangeCount?selection.getRangeAt(0).getBoundingClientRect():null;
-    if(rect && showSelectionMenu(rect.left,rect.bottom,true))event.preventDefault();
+    if(rect && showSelectionMenu(rect.left,rect.bottom,true)){event.preventDefault();return;}
+    // Without a selection, the menu acts on the passage being read.
+    const pair=state.view==='reading' ? activePair() : null;
+    if(pair){
+      event.preventDefault();const box=pair.section.getBoundingClientRect();menuReturn=pair.section;
+      openPassageMenu([pair],passageText(pair),box.left,Math.max(box.top,READING_LINE)+4,true);
+      announce('Passage menu.');
+    }
   }
 });
 $('selection-language').addEventListener('click',()=>{
@@ -1685,10 +1791,11 @@ $('selection-language').addEventListener('click',()=>{
   const returnOffset=!selectionLanguage?first?.englishScrollOffset:undefined;
   closeSelectionMenu();window.getSelection()?.removeAllRanges();
   // Each non-silent switch forces a whole-book layout; switch silently and measure once.
-  pairs.forEach(pair=>pair.show(selectionLanguage,false,true)); updateProgress();
+  pairs.forEach(pair=>pair.show(selectionLanguage,false,true)); updateProgress(); rememberSwitches();
   if(returnOffset!==undefined){window.scrollTo({top:scrollY+first.section.getBoundingClientRect().top+returnOffset,behavior:'instant'});delete first.englishScrollOffset;}
   else if(first && first.section.getBoundingClientRect().bottom<$('toolbar-volume').getBoundingClientRect().bottom+30)first.section.scrollIntoView({block:'start',behavior:'instant'});
   announce((selectionLanguage?sourceLanguageLabel():'English')+' shown for the selected passage'+(pairs.length===1?'': 's')+'.');
+  if(menuReturn){menuReturn.setAttribute('tabindex','-1');menuReturn.focus({preventScroll:true});menuReturn=null;}
 });
 $('selection-copy').addEventListener('click',async()=>{
   const text=selectedCopy;closeSelectionMenu();
@@ -1852,8 +1959,9 @@ document.addEventListener('keydown',e=>{
     return;
   }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase()==='k') {e.preventDefault();showSearch();return;}
-  if (editing || e.metaKey || e.ctrlKey || e.altKey || document.querySelector('dialog[open]')) return;
+  if (editing || e.metaKey || e.ctrlKey || e.altKey || document.querySelector('dialog[open]') || state.settings.shortcuts===false) return;
   if (e.key==='/') {e.preventDefault();showSearch();}
+  else if (e.key.toLowerCase()==='t') {e.preventDefault();toggleActivePassage();}
   else if (e.key.toLowerCase()==='f') {e.preventDefault();toggleFocus();}
   else if (e.key.toLowerCase()==='b') {e.preventDefault();bookmarkPosition();}
   else if (e.key.toLowerCase()==='l') {e.preventDefault();showLibrary();}
