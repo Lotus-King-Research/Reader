@@ -358,6 +358,7 @@ test('paired-text/1 empty anchor deep links survive language switching', async (
   await expect.poll(() => linked.evaluate(element => Math.round(element.getBoundingClientRect().top))).toBeLessThanOrEqual(page.viewportSize().height / 2);
   const before = await linked.evaluate(element => element.getBoundingClientRect().top);
   await linked.locator('.section-language-toggle').click();
+  await expect(page.locator('#language-toggle')).toHaveText('English');
   await expect(linked.locator('.source-passage')).toContainText('བར་མའི་བོད་ཡིག།');
   await expect(page.locator('#md-dtg-000002')).toHaveCount(1);
   await expect.poll(async () => Math.abs(await linked.evaluate(element => element.getBoundingClientRect().top) - before)).toBeLessThan(3);
