@@ -603,6 +603,30 @@ function rebuildCitationLayers() {
   announce(state.settings.citations ? 'Attributed quotations are separated from the main text.' : 'Automatic citation formatting is off. Authored blockquotes are retained.');
 }
 
+function tagTibetanRuns(root) {
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT), nodes=[];
+  while (walker.nextNode()) {
+    const node=walker.currentNode, tagged=node.parentElement?.closest('[lang]');
+    if (/[\u0f00-\u0fff]/.test(node.data) && !(tagged && root.contains(tagged))) nodes.push(node);
+  }
+  for (const node of nodes) {
+    const parts=document.createDocumentFragment(); let last=0;
+    for (const match of node.data.matchAll(/[\u0f00-\u0fff](?:[\u0f00-\u0fff\s]*[\u0f00-\u0fff])?/g)) {
+      if (match.index>last) parts.append(node.data.slice(last,match.index));
+      const span=document.createElement('span'); span.lang='bo'; span.textContent=match[0]; parts.append(span);
+      last=match.index+match[0].length;
+    }
+    if (last<node.data.length) parts.append(node.data.slice(last));
+    node.replaceWith(parts);
+  }
+}
+// Display only: typewriter apostrophes inside English words become typographic ones.
+// Search treats both forms alike; code, Tibetan and Chinese are left untouched.
+function typographicApostrophes(root) {
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:node=>node.data.includes("'") && !node.parentElement?.closest('code,pre,kbd,samp,[lang|="bo"],[lang|="zh"]') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT});
+  const nodes=[]; while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) node.data=node.data.replace(/(\p{L})'(\p{L})/gu,'$1’$2').replace(/(\p{L}s)'(?=[\s.,;:!?)\]]|$)/gu,'$1’');
+}
 function prepareContent(fragment, metadata, descriptor) {
   const first = fragment.querySelector('h1');
   const title = first?.textContent.trim() || metadata.title || descriptor.title || 'Untitled manuscript';
@@ -618,10 +642,20 @@ function prepareContent(fragment, metadata, descriptor) {
     heading.dataset.headingText = heading.textContent;
   });
   fragment.querySelectorAll('p,blockquote,h1,h2,h3,h4,li,td,th').forEach(el => {
-    const tibetan=(el.textContent.match(/[\u0f00-\u0fff]/g) || []).length,letters=(el.textContent.match(/\p{L}/gu) || []).length;
-    if (!el.lang && tibetan && tibetan>=letters*.5) el.lang='bo';
-    else if (!el.lang && chineseDominant(el.textContent)) el.lang = 'zh';
+    if (el.lang) return;
+    const text=el.textContent, tibetan=/[\u0f00-\u0fff]/.test(text);
+    // Tag a whole element only when it is Tibetan; in mixed lines tag the Tibetan runs,
+    // so English labels keep the book face and screen readers switch voice per run.
+    if (tibetan && (text.match(/\p{Script=Latin}/gu) || []).length < 3) el.lang='bo';
+    else if (tibetan) tagTibetanRuns(el);
+    else if (chineseDominant(text)) el.lang = 'zh';
   });
+  // A paragraph of head marks alone (yig mgo, shad) is an ornament for the passage it opens.
+  fragment.querySelectorAll('p').forEach(p => {
+    const visible=[...p.childNodes].filter(node => !(node.nodeType===1 && node.matches('sup'))).map(node => node.textContent).join('');
+    if (/^[\u0f01-\u0f14\s]+$/.test(visible) && visible.trim()) p.classList.add('tibetan-sign');
+  });
+  typographicApostrophes(fragment);
   fragment.querySelectorAll('table').forEach(table => {
     const wrap = document.createElement('div'); wrap.className = 'table-scroll'; wrap.tabIndex = 0;
     wrap.setAttribute('role','region'); wrap.setAttribute('aria-label',table.querySelector('caption')?.textContent || 'Scrollable table');
@@ -1237,7 +1271,7 @@ function buildOutline() {
   state.headings=[]; let section=0;
   const els=[...$('manuscript').querySelectorAll('h1,h2,h3')].filter(el=>!el.closest('.source-passage,.source-footnotes') && (!el.closest('.footnotes') || state.settings.notes));
   for (const heading of els) {
-    const level=Number(heading.tagName[1]); if (level<=2) section++;
+    const level=heading.closest('.parallel-section[data-format="h1"]') ? 3 : Number(heading.tagName[1]); if (level<=2) section++;
     const text=heading.dataset.headingText || heading.textContent;
     const number=String(section || 1).padStart(2,'0');
     if (level===2) heading.dataset.sectionNumber=number;
@@ -1393,7 +1427,7 @@ function buildSearchIndex() {
     const clone=el.cloneNode(true); clone.querySelectorAll('.section-link,.footnote-back,[data-reader-ui]').forEach(a=>a.remove());
     const text=clone.textContent.replace(/\s+/g,' ').trim(); if (!text) return;
     if (!el.id) el.id='passage-'+(++index);
-    state.search.push({id:el.id,text,lower:text.toLocaleLowerCase(),context});
+    state.search.push({id:el.id,text,lower:searchForm(text),context});
   });
   $('search-scope').textContent='In '+($('toolbar-volume').textContent || 'this manuscript');
   $('search-input').value=''; renderSearch();
@@ -1405,8 +1439,10 @@ function showSearch() {
 $('search-trigger').addEventListener('click',showSearch);
 let searchTimer;
 $('search-input').addEventListener('input',()=>{ clearTimeout(searchTimer); searchTimer=setTimeout(renderSearch,100); });
+// Same length as the input, so match offsets stay valid for highlighting.
+function searchForm(text) { return text.toLocaleLowerCase().replace(/[’‘]/g,"'"); }
 function renderSearch() {
-  const query=$('search-input').value.trim().toLocaleLowerCase(); $('search-results').replaceChildren();
+  const query=searchForm($('search-input').value.trim()); $('search-results').replaceChildren();
   if (!query) { $('search-empty').hidden=false; $('search-empty').textContent='Search the current manuscript in English or Tibetan.'; $('search-count').textContent='Type to search'; return; }
   const matches=state.search.filter(item=>item.lower.includes(query));
   $('search-count').textContent=`${matches.length} passage${matches.length===1?'':'s'}${matches.length>60?' · first 60 shown':''}`;
@@ -1439,9 +1475,9 @@ function applySettings(persist=true) {
   settings.measure=[620,720,840].includes(Number(settings.measure)) ? Number(settings.measure):720;
   settings.leading=Math.max(1.5,Math.min(2.2,Number(settings.leading)||1.88));
   document.documentElement.dataset.theme=settings.theme;
-  document.documentElement.style.setProperty('--body-size',settings.size+'px');
-  document.documentElement.style.setProperty('--measure',settings.measure+'px');
-  document.documentElement.style.setProperty('--leading',String(settings.leading));
+  document.documentElement.style.setProperty('--user-size',settings.size+'px');
+  document.documentElement.style.setProperty('--user-measure',settings.measure+'px');
+  document.documentElement.style.setProperty('--user-leading',String(settings.leading));
   document.querySelector('meta[name="theme-color"]').content=settings.theme==='ink' ? '#202824':settings.theme==='mist' ? '#edf0ed':'#f5f1e8';
   $('font-size').value=settings.size; $('size-value').textContent=settings.size+' px';
   $('line-height').value=settings.leading; previewSliders();

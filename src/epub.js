@@ -60,6 +60,8 @@ p { margin: 0 0 1em; orphans: 3; widows: 3; }
 a { text-decoration: underline; }
 [lang|="zh"] { font-family: "Songti SC", "Songti TC", "Noto Serif CJK TC", "Noto Serif CJK SC", "PMingLiU", serif; line-height: 1.9; }
 [lang|="bo"] { font-family: "Noto Serif Tibetan", "Noto Sans Tibetan", serif; line-height: 2; }
+.paired-verse p { text-indent: 1.5em hanging each-line; }
+.tibetan-sign { text-align: center; text-indent: 0; color: #9e3c2c; font-size: 1.4em; margin: 1.4em 0 .3em; }
 blockquote { margin: 1.3em 0 1.3em 1em; padding: .3em 0 .3em 1em; border-left: 2px solid #9e3c2c; }
 figure.citation-block { margin: 1.7em 0 1.7em .6em; padding: .4em 0 .4em 1em; border-left: 2px solid #9e3c2c; }
 .citation-attribution { margin-bottom: .8em; page-break-after: avoid; break-after: avoid; }

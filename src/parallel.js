@@ -171,7 +171,11 @@ function build(english,source,{language='bo',sectionMap=[],anchorAlignment=false
   if(sourceNotes && pairs.length)english.append(sourceNotes);
   if(englishNotes)english.append(englishNotes);
   const referenceHolders=[...new Set([...english.querySelectorAll('.footnote-ref,.legacy-note-ref')].map(ref=>ref.closest('sup') || ref))];
-  for(const holder of referenceHolders)holder.classList.add('reader-note-marker');
+  for(const holder of referenceHolders){
+    holder.classList.add('reader-note-marker');
+    // Markers sit tight against the word they annotate.
+    const before=holder.previousSibling;if(before?.nodeType===3 && /\S\s+$/.test(before.data))before.data=before.data.replace(/\s+$/,'');
+  }
   function setNotesVisible(visible){
     notesVisible=Boolean(visible);for(const holder of referenceHolders)holder.hidden=!notesVisible;
     syncNotes();return notesVisible;
