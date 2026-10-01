@@ -26,7 +26,7 @@ const githubBase = rawBase ? `https://github.com/${CONFIG.owner}/${CONFIG.reposi
 const apiDirectory = rawBase ? `https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repository}/contents/${CONFIG.directory}?ref=${encodeURIComponent(CONFIG.branch)}` : null;
 const naturalSort = new Intl.Collator(undefined, {numeric: true, sensitivity: 'base'});
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
-const defaults = { theme: 'paper', size: innerWidth < 601 ? 18 : 20, measure: 720, leading: 1.88, citations: true, notes: false, shortcuts: true };
+const defaults = { theme: 'auto', tibetan: 100, size: innerWidth < 601 ? 18 : 20, measure: 720, leading: 1.88, citations: true, notes: false, shortcuts: true };
 const state = { view: 'collection', readingPosition: null, readingHeadings: [], current: null, library: [], headings: [], search: [], settings: {...defaults}, busy: false,
   loadId: 0, controller: null, parser: null, activeHeading: null, progress: 0, minutes: 0,
   bookmark: null, canStore: true, restoring: false, lastSave: 0, toastTimer: null,
@@ -71,12 +71,15 @@ function notify(text, actionText = '', action = null, duration = 5500) {
 function showError(text, retry = true) {
   $('load-message-text').textContent = text; $('retry-button').hidden = !retry; $('load-message').hidden = false;
 }
-function syncModalState() { document.body.classList.toggle('dialog-open', !!document.querySelector('dialog[open]')); }
+function isModal(dialog) { try { return dialog.matches(':modal'); } catch { return !PANELS.has(dialog.id); } }
+function syncModalState() { document.body.classList.toggle('dialog-open', [...document.querySelectorAll('dialog[open]')].some(isModal)); }
+// Appearance stays beside the page instead of covering it.
+const PANELS = new Set(['settings-dialog']);
 function openDialog(id) {
   closeNav(false);
   const dialog = $(id);
   document.querySelectorAll('dialog[open]').forEach(other => { if (other !== dialog) other.close(); });
-  if (!dialog.open) dialog.showModal();
+  if (!dialog.open) { if (PANELS.has(id)) dialog.show(); else dialog.showModal(); }
   syncModalState();
 }
 function closeDialog(id) { $(id).close(); syncModalState(); }
@@ -1775,17 +1778,20 @@ $('search-results').addEventListener('keydown',e=>{
 function applySettings(persist=true) {
   const settings=state.settings;
   settings.citations=settings.citations !== false;
-  if (!['paper','mist','ink'].includes(settings.theme)) settings.theme='paper';
+  if (!['auto','paper','mist','ink'].includes(settings.theme)) settings.theme='auto';
+  settings.tibetan=Math.max(90,Math.min(140,Math.round((Number(settings.tibetan)||100)/5)*5));
   settings.size=Math.max(16,Math.min(28,Number(settings.size)||defaults.size));
   settings.measure=[620,720,840].includes(Number(settings.measure)) ? Number(settings.measure):720;
   settings.leading=Math.max(1.5,Math.min(2.2,Number(settings.leading)||1.88));
-  document.documentElement.dataset.theme=settings.theme;
+  if (settings.theme==='auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.dataset.theme=settings.theme;
+  document.documentElement.style.setProperty('--user-bo-scale',String(settings.tibetan/100));
   document.documentElement.style.setProperty('--user-size',settings.size+'px');
   document.documentElement.style.setProperty('--user-measure',settings.measure+'px');
   document.documentElement.style.setProperty('--user-leading',String(settings.leading));
-  document.querySelector('meta[name="theme-color"]').content=settings.theme==='ink' ? '#202824':settings.theme==='mist' ? '#edf0ed':'#f5f1e8';
+  const [light,dark]=document.querySelectorAll('meta[name="theme-color"]'), chosen={paper:'#f5f1e8',mist:'#edf0ed',ink:'#202824'}[settings.theme];
+  if (light && dark) { light.content=chosen || '#f5f1e8'; dark.content=chosen || '#202824'; }
   $('font-size').value=settings.size; $('size-value').textContent=settings.size+' px';
-  $('line-height').value=settings.leading; previewSliders();
+  $('line-height').value=settings.leading; $('tibetan-size').value=settings.tibetan; previewSliders();
   $$('.theme-choice').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.theme===settings.theme)));
   $$('[data-measure]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.measure)===settings.measure)));
   $('auto-citations').checked=settings.citations;setNotesVisible(settings.notes,false);
@@ -1793,20 +1799,25 @@ function applySettings(persist=true) {
   if (persist) storageWrite('settings',settings);
   rebuildCitationLayers(); pinPlace();
 }
-$('settings-trigger').addEventListener('click',()=>openDialog('settings-dialog'));
+$('settings-trigger').addEventListener('click',()=>{ if ($('settings-dialog').open) closeSettings(); else openDialog('settings-dialog'); });
+function closeSettings() { if (!$('settings-dialog').open) return; closeDialog('settings-dialog'); $('settings-trigger').focus({preventScroll:true}); }
+// A panel is not modal, so Escape is handled here rather than by the browser.
+$('settings-dialog').addEventListener('keydown',e=>{ if (e.key==='Escape') { e.preventDefault(); e.stopPropagation(); closeSettings(); } });
 $$('.theme-choice').forEach(b=>b.addEventListener('click',()=>{state.settings.theme=b.dataset.theme;applySettings();}));
 $$('[data-measure]').forEach(b=>b.addEventListener('click',()=>{state.settings.measure=Number(b.dataset.measure);applySettings();}));
 // Each value change relays out the whole book (hundreds of milliseconds on a phone),
 // so dragging previews the value and the book is set once, on release.
 function previewSliders() {
   const size=Number($('font-size').value), leading=Number($('line-height').value);
-  $('size-value').textContent=size+' px'; $('leading-value').textContent=leading.toFixed(2);
+  $('size-value').textContent=size+' px'; $('leading-value').textContent=leading.toFixed(2); $('tibetan-value').textContent=$('tibetan-size').value+'%';
   const preview=document.querySelector('.settings-preview'); if (preview) { preview.style.fontSize=size+'px'; preview.style.lineHeight=String(leading); }
 }
 $('font-size').addEventListener('input',previewSliders);
 $('line-height').addEventListener('input',previewSliders);
 $('font-size').addEventListener('change',e=>{state.settings.size=Number(e.target.value);applySettings();});
 $('line-height').addEventListener('change',e=>{state.settings.leading=Number(e.target.value);applySettings();});
+$('tibetan-size').addEventListener('input',previewSliders);
+$('tibetan-size').addEventListener('change',e=>{state.settings.tibetan=Number(e.target.value);applySettings();});
 $('auto-citations').addEventListener('change',e=>{state.settings.citations=e.target.checked;applySettings();});
 $('single-key-shortcuts').addEventListener('change',e=>{state.settings.shortcuts=e.target.checked;applySettings();syncSourceHint();});
 $('reset-settings').addEventListener('click',()=>{state.settings={...defaults};applySettings();});
@@ -2168,6 +2179,7 @@ document.addEventListener('keydown',e=>{
   const editing=e.target.matches('input,textarea,select,[contenteditable="true"]');
   if (e.key==='Escape') {
     if (!$('selection-menu').hidden) {closeSelectionMenu();return;}
+    if ($('settings-dialog').open && !isModal($('settings-dialog'))) {closeSettings();return;}
     if (document.querySelector('dialog[open]')) return;
     if (document.body.classList.contains('nav-open')) {e.preventDefault();closeNav();return;}
     if (document.body.classList.contains('focus-mode')) {document.body.classList.remove('focus-mode');syncFocus();}
