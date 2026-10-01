@@ -155,7 +155,8 @@ function build(english,source,{language='bo',sectionMap=[],anchorAlignment=false
       used.add(match);
       const original=document.createElement('div');original.className='source-passage';original.lang=language;original.hidden=true;original.append(...match.nodes);
       if(format)materialize(original,match,format,true);
-      const pair={section,english:body,source:original,sourceVisible:false,format:format || null};
+      // An empty source side (an editorial placeholder in the translation) has nothing to show.
+      const pair={section,english:body,source:original,sourceVisible:false,format:format || null,emptySource:!original.textContent.trim() && !original.querySelector('img')};
       pair.show=(visible,keepPosition=true,silent=false)=>{
         visible=Boolean(visible);
         const offset=keepPosition ? section.getBoundingClientRect().top : 0;

@@ -598,7 +598,7 @@ function rebuildCitationLayers() {
   prepareContent(fragment,state.current.metadata || {},state.current);
   if (state.parallelFragment) state.parallel=pairSections(fragment,state.parallelFragment.cloneNode(true),state.current);
   state.parallel?.pairs.forEach(pair=>{if(sourceSections.has(pair.section.id))pair.show(true,false,true);});
-  $('manuscript').replaceChildren(fragment);state.renderedCitations=state.settings.citations;
+  markApparatus(fragment);$('manuscript').replaceChildren(fragment);state.renderedCitations=state.settings.citations;
   buildOutline();buildSearchIndex();restorePosition(position);
   announce(state.settings.citations ? 'Attributed quotations are separated from the main text.' : 'Automatic citation formatting is off. Authored blockquotes are retained.');
 }
@@ -626,6 +626,44 @@ function typographicApostrophes(root) {
   const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:node=>node.data.includes("'") && !node.parentElement?.closest('code,pre,kbd,samp,[lang|="bo"],[lang|="zh"]') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT});
   const nodes=[]; while (walker.nextNode()) nodes.push(walker.currentNode);
   for (const node of nodes) node.data=node.data.replace(/(\p{L})'(\p{L})/gu,'$1’$2').replace(/(\p{L}s)'(?=[\s.,;:!?)\]]|$)/gu,'$1’');
+}
+/* Editorial apparatus written by the translators stays word for word, but is set as
+   apparatus: a bracketed label such as "[Source heading: …]" becomes a small label
+   above the heading, safety notes stand on their own labelled line, and whole-paragraph
+   placeholders are quiet ruled notes. Brackets stay in the DOM for search. */
+const APPARATUS_HEADING=/^\[(Source heading|Source annotation):\s*([\s\S]+?)\]$/;
+function navLabel(text) { const match=APPARATUS_HEADING.exec(String(text).trim()); return match ? match[2].replace(/\.$/,'') : text; }
+function bracketPart(text) { const span=textElement('span',text,'ap-br'); span.setAttribute('aria-hidden','true'); return span; }
+function markApparatus(root) {
+  for (const heading of root.querySelectorAll('h1,h2,h3,h4')) {
+    if (heading.closest('.source-passage') || heading.querySelector('.apparatus-label')) continue;
+    const match=/^\[(Source heading|Source annotation):\s*/.exec(heading.textContent);
+    const first=[...heading.childNodes].find(node => node.nodeType===3 && node.data.trim());
+    const last=[...heading.childNodes].reverse().find(node => node.nodeType===3 && node.data.trim());
+    if (!match || !first?.data.trimStart().startsWith(match[0].trimEnd()) || !/\]\s*$/.test(last?.data || '')) continue;
+    const lead=first.data.length-first.data.trimStart().length;
+    first.data=first.data.slice(lead+match[0].length);
+    first.before(bracketPart('['),textElement('span',match[1],'apparatus-label'),bracketPart(': '));
+    const close=last.data.lastIndexOf(']'); last.data=last.data.slice(0,close)+last.data.slice(close+1); last.after(bracketPart(']'));
+  }
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:node=>/\[Editorial (?:safety )?note:/.test(node.data) && !node.parentElement?.closest('.source-passage,.apparatus-inline') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT});
+  const notes=[]; while (walker.nextNode()) notes.push(walker.currentNode);
+  for (const node of notes) {
+    const parts=document.createDocumentFragment(); let last=0;
+    for (const match of node.data.matchAll(/\[(Editorial (?:safety )?note):\s*([^\]]+)\]/g)) {
+      if (match.index>last) parts.append(node.data.slice(last,match.index));
+      const note=document.createElement('span'); note.className='apparatus-inline';
+      note.append(bracketPart('['),textElement('span',match[1],'apparatus-label'),bracketPart(': '),match[2],bracketPart(']'));
+      parts.append(note); last=match.index+match[0].length;
+    }
+    if (last<node.data.length) parts.append(node.data.slice(last));
+    node.replaceWith(parts);
+  }
+  for (const p of root.querySelectorAll('p')) {
+    if (p.closest('.source-passage,.footnotes')) continue;
+    const visible=[...p.childNodes].filter(node => !(node.nodeType===1 && node.matches('sup'))).map(node => node.textContent).join('').trim();
+    if (/^\[(?:Source annotation|Joined source fragment|Unresolved source|Provisional source caption)\b[\s\S]*\]$/.test(visible)) p.classList.add('apparatus-block');
+  }
 }
 function prepareContent(fragment, metadata, descriptor) {
   const first = fragment.querySelector('h1');
@@ -1131,6 +1169,7 @@ async function loadDocument(descriptor, options = {}) {
     loadingProgress(85,'Preparing Tibetan passages…');await new Promise(resolve=>requestAnimationFrame(resolve));
     if(loadId!==state.loadId || controller.signal.aborted)return false;
     const paired=await prepareParallel(fragment,candidate,controller.signal);
+    markApparatus(fragment);
     if(loadId!==state.loadId || controller.signal.aborted)return false;
     loadingProgress(94,'Finishing the reading page…');await new Promise(resolve=>requestAnimationFrame(resolve));
     if(loadId!==state.loadId || controller.signal.aborted)return false;
@@ -1272,7 +1311,7 @@ function buildOutline() {
   const els=[...$('manuscript').querySelectorAll('h1,h2,h3')].filter(el=>!el.closest('.source-passage,.source-footnotes') && (!el.closest('.footnotes') || state.settings.notes));
   for (const heading of els) {
     const level=heading.closest('.parallel-section[data-format="h1"]') ? 3 : Number(heading.tagName[1]); if (level<=2) section++;
-    const text=heading.dataset.headingText || heading.textContent;
+    const text=navLabel(heading.dataset.headingText || heading.textContent);
     const number=String(section || 1).padStart(2,'0');
     if (level===2) heading.dataset.sectionNumber=number;
     const anchor=heading.dataset.sectionAnchor || heading.id;
@@ -1421,7 +1460,7 @@ $('focus-button').addEventListener('click',toggleFocus);
 function buildSearchIndex() {
   state.search=[]; let context=state.current.title; let index=0;
   $('manuscript').querySelectorAll('h1,h2,h3,h4,p,li,td,th,pre,dt,dd,figcaption').forEach(el=>{
-    if (/^H[1-4]$/.test(el.tagName)) context=el.dataset.headingText || el.textContent.replace(/§$/,'').trim();
+    if (/^H[1-4]$/.test(el.tagName)) context=navLabel(el.dataset.headingText || el.textContent.replace(/§$/,'').trim());
     // Avoid duplicate hits for list items and paragraphs inside those items.
     if (el.tagName==='LI' && el.querySelector('p,li')) return;
     const clone=el.cloneNode(true); clone.querySelectorAll('.section-link,.footnote-back,[data-reader-ui]').forEach(a=>a.remove());
@@ -1547,7 +1586,7 @@ function showSelectionMenu(x,y,focus=false) {
   const range=selection.getRangeAt(0),article=$('manuscript');
   if(!article.contains(range.startContainer) || !article.contains(range.endContainer))return false;
   selectedCopy=selection.toString();if(!selectedCopy.trim())return false;
-  selectedPassages=state.parallel?.pairsForRange(range) || [];
+  selectedPassages=(state.parallel?.pairsForRange(range) || []).filter(pair=>!pair.emptySource);
   selectionLanguage=selectedPassages.length>0 && !selectedPassages.every(pair=>pair.sourceVisible);
   const language=$('selection-language');language.hidden=!selectedPassages.length;language.textContent='Show '+(selectionLanguage?sourceLanguageLabel():'English');
   selectionScroll=scrollY;const menu=$('selection-menu');menu.hidden=false;menu.style.left='0px';menu.style.top='0px';

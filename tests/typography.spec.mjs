@@ -7,7 +7,10 @@ const units = [
   {id:'TY-000001',format:'prose',english:'༄༅།',source:'༄༅།'},
   {id:'TY-000002',format:'h1',english:'Here is the specimen title.',source:'དཔེ་ཆའི་མཚན།'},
   {id:'TY-000003',format:'verse',english:"The teacher's words are spoken,\nand the students' minds rest.",source:'ཚིགས་བཅད་དང་པོ།\nཚིགས་བཅད་གཉིས་པ།'},
-  {id:'TY-000004',format:'prose',english:'The reading ya bzhi [ཡ་བཞི་; sense unresolved] is kept as written.',source:'ཡ་བཞི།'}
+  {id:'TY-000004',format:'prose',english:'The reading ya bzhi [ཡ་བཞི་; sense unresolved] is kept as written.',source:'ཡ་བཞི།'},
+  {id:'TY-000005',format:'h3',english:'[Source heading: First reply.]',source:'དྲིས་ལན་དང་པོ།'},
+  {id:'TY-000006',format:'verse',english:'Taking a drop at a time,\n[Editorial safety note: Do not carry out this prescription.]\nlikewise, a portion.',source:'ཚིག་དང་པོ།\nཚིག་གཉིས་པ།'},
+  {id:'TY-000007',format:'prose',english:'[Source annotation at U00317; no additional root text.]',source:''}
 ];
 function manuscript(side) {
   const source = side === 'source';
@@ -69,4 +72,25 @@ test('print uses its own type size, not the screen setting', async ({page}) => {
   await page.emulateMedia({media:'print'});
   const printSize = await page.locator('#manuscript').evaluate(el => parseFloat(getComputedStyle(el).fontSize));
   expect(printSize).toBeCloseTo(14.67, 1);
+});
+
+test('editorial apparatus is set as apparatus, word for word', async ({page}) => {
+  await open(page);
+  const heading = section(page, 'TY-000005').locator('.english-passage h3');
+  await expect(heading.locator('.apparatus-label')).toHaveText('Source heading');
+  expect(await heading.textContent()).toContain('[Source heading: First reply.]');
+  await expect(page.locator('#toc a').filter({hasText:'First reply'})).toHaveText('First reply');
+  const note = section(page, 'TY-000006').locator('.apparatus-inline');
+  await expect(note.locator('.apparatus-label')).toHaveText('Editorial safety note');
+  expect(await note.evaluate(el => getComputedStyle(el).display)).toBe('block');
+  await expect(section(page, 'TY-000007').locator('.english-passage p')).toHaveClass(/apparatus-block/);
+});
+
+test('a passage with no Tibetan offers Copy but no language switch', async ({page}) => {
+  await open(page);
+  const passage = section(page, 'TY-000007').locator('.english-passage p');
+  await passage.evaluate(p => { const range = document.createRange(); range.selectNodeContents(p); getSelection().removeAllRanges(); getSelection().addRange(range); });
+  await passage.dispatchEvent('contextmenu', {button:2, clientX:120, clientY:160});
+  await expect(page.locator('#selection-copy')).toBeVisible();
+  await expect(page.locator('#selection-language')).toBeHidden();
 });
