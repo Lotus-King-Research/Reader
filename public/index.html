@@ -3585,6 +3585,24 @@ nav ol { padding-left: 1.3em; } nav li { margin: .6em 0; }
       "englishUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Togden-Gongchig-Drelwa/main/paired/translation.md",
       "sourceUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Togden-Gongchig-Drelwa/main/paired/source.md",
       "sourceLanguage": "bo"
+    },
+    {
+      "id": "gongchig-chawa",
+      "repository": "Lotus-King-Translation/Gongchig-Chawa",
+      "title": "Gongchig Chawa",
+      "description": "Provisional Tibetan source and annotated English working translation.",
+      "englishUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Gongchig-Chawa/main/paired/translation.md",
+      "sourceUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Gongchig-Chawa/main/paired/source.md",
+      "sourceLanguage": "bo"
+    },
+    {
+      "id": "togden-nangpa-sangyepa",
+      "repository": "Lotus-King-Translation/Togden-Nangpa-Sangyepa",
+      "title": "Togden Rinpoche’s Refuge Instructions",
+      "description": "Provisional Tibetan source and annotated English working translation.",
+      "englishUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Togden-Nangpa-Sangyepa/main/paired/translation.md",
+      "sourceUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Togden-Nangpa-Sangyepa/main/paired/source.md",
+      "sourceLanguage": "bo"
     }
   ]
 }
@@ -3601,7 +3619,8 @@ function cleanPairedApparatus(fragment) {
     if(/^Earlier notes:\s*/i.test(paragraph.textContent.trim()))paragraph.remove();
   }
   for(const link of fragment.querySelectorAll('a[href]')) {
-    if(!/(?:^|\/)LEGACY-NOTES\.md#n-[^#?\s]+$/i.test(link.getAttribute('href')))continue;
+    if(!/(?:^|\/)(?:LEGACY-)?NOTES\.md#[^#?\s]+$/i.test(link.getAttribute('href')))continue;
+    link.setAttribute('href',link.getAttribute('href').replace(/^https:\/\/raw\.githubusercontent\.com\/([^/]+\/[^/]+)\//i,'https://github.com/$1/blob/'));
     link.classList.add('legacy-note-ref');
     const marker=document.createElement('sup');marker.className='reader-note-marker legacy-note-marker';
     link.replaceWith(marker);marker.append(link);

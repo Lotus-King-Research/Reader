@@ -162,6 +162,38 @@ test('paired-text/2 notes stay optional and attach to the visible language witho
   await expect(page.locator('#manuscript .source-footnotes')).toBeVisible(); await expect(page.locator('#manuscript .footnotes:not(.source-footnotes)')).toBeVisible();
 });
 
+test('paired-text/2 linked editorial notes follow the notes toggle and retain export destinations',async({page},info)=>{
+  const english=manuscript('english')
+    .replace(units[0].english,units[0].english+' [F001](../translations/NOTES.md#f001)')
+    .replace('English verse line two.','English verse line two. [Q004](../translations/NOTES.md#q004)')
+    .replace('English prose opening.','English prose opening. [N-T01](../translations/LEGACY-NOTES.md#n-t01) [Publication](../README.md#reading) [All notes](../translations/NOTES.md)');
+  const source=manuscript('source').replace(units[4].source,units[4].source+' [B001](../translations/NOTES.md#b001)');
+  await fixture(page,{english,source});
+  const markers=page.locator('#manuscript .legacy-note-ref');
+  await expect(markers).toHaveCount(4);
+  for(const marker of await markers.all())await expect(marker).toBeHidden();
+  await expect(page.locator('#notes-toggle')).toBeVisible();
+  await expect(pair(page,units[0].id).locator('.english-passage h1')).toHaveAttribute('data-heading-text',units[0].english);
+  await expect(page.locator('#manuscript a').filter({hasText:'Publication'})).toBeVisible();
+  await expect(page.locator('#manuscript a').filter({hasText:'All notes'})).toBeVisible();
+  await switchPair(page,units[4]);
+  const sourceNote=pair(page,units[4].id).locator('.source-passage .legacy-note-ref');
+  await expect(sourceNote).toBeHidden();
+  await page.locator('#notes-toggle').click();
+  await expect(sourceNote).toBeVisible();
+  await expect(sourceNote).toHaveAttribute('href',`https://github.com/${repository}/blob/main/translations/NOTES.md#b001`);
+  await switchPair(page,units[4]);
+  await expect(pair(page,units[4].id).locator('.english-passage .legacy-note-ref')).toBeVisible();
+  await page.locator('#notes-toggle').click();
+  for(const marker of await markers.all())await expect(marker).toBeHidden();
+  await sourceDialog(page); await page.locator('#export-epub').click();
+  const download=page.waitForEvent('download'); await page.locator('#epub-save').click();
+  const path=info.outputPath('linked-notes.epub'); await(await download).saveAs(path);
+  const content=storedZipEntry(await readFile(path),'EPUB/content.xhtml');
+  for(const target of ['NOTES.md#f001','NOTES.md#q004','LEGACY-NOTES.md#n-t01'])expect(content).toContain(`https://github.com/${repository}/blob/main/translations/${target}`);
+  expect(content).toContain(`https://raw.githubusercontent.com/${repository}/main/README.md#reading`);
+});
+
 test('paired-text/2 offline copies retain inherited headings and explicit verse breaks in both languages',async({page,context},info)=>{
   const state=await fixture(page);
   await sourceDialog(page);

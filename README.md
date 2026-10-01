@@ -6,7 +6,7 @@ An English–Tibetan reader built from [Lukija](https://github.com/mikkokotila/L
 
 ## Publish a text
 
-On a feature branch, edit `public/reader-config.json`, add a work, and run `npm run build`. Open a pull request; merging it after validation publishes the work automatically. The collection includes [Dra Thal Gyur](https://github.com/Lotus-King-Translation/Dra-Thal-Gyur) and [Togden Rinpoche’s Gongchig Commentary](https://github.com/Lotus-King-Translation/Togden-Gongchig-Drelwa), each loaded from its canonical paired Tibetan source and English translation. The commentary is an annotated working draft against a provisional source.
+On a feature branch, edit `public/reader-config.json`, add a work, and run `npm run build`. Open a pull request; merging it after validation publishes the work automatically. The collection includes [Dra Thal Gyur](https://github.com/Lotus-King-Translation/Dra-Thal-Gyur), [Togden Rinpoche’s Gongchig Commentary](https://github.com/Lotus-King-Translation/Togden-Gongchig-Drelwa), [Gongchig Chawa](https://github.com/Lotus-King-Translation/Gongchig-Chawa), and [Togden Rinpoche’s Refuge Instructions](https://github.com/Lotus-King-Translation/Togden-Nangpa-Sangyepa), each loaded from its canonical paired Tibetan source and English translation. The latter three are annotated working translations against provisional sources.
 
 ```json
 {
@@ -51,7 +51,7 @@ For ordinary Markdown, a leading H1 is the work title. Subsequent headings divid
 
 Give stable IDs to Markdown headings with HTML such as `<h2 id="opening">The opening</h2>`. Use the original ID in configuration (the reader also accepts its `md-` prefixed form). Explicit maps disable ordinal fallback. Unmatched sections stay English; Copy remains available in the selection menu. Introductory text before the first section uses `opening`; avoid using that ID on a heading. A text without headings is treated as one section.
 
-A missing or invalid Tibetan source leaves the English translation readable and displays the failure. Source texts retain their own notes and links. The sticky toolbar’s notes icon shows or hides endnote references and endnotes; they are hidden by default. In paired-text manuscripts, standalone references attach to the preceding passage, legacy note links become optional superscripts, and repeated “Earlier notes” paragraphs are omitted from the reading page. The original Markdown remains unchanged. English heading labels remain the navigation outline in either language. Search includes both languages and reveals the language of the selected result.
+A missing or invalid Tibetan source leaves the English translation readable and displays the failure. Source texts retain their own notes and links. The sticky toolbar’s notes icon shows or hides endnote references and endnotes; they are hidden by default. In paired-text manuscripts, standalone references attach to the preceding passage, links to individual notes in `NOTES.md` or `LEGACY-NOTES.md` become optional superscripts, and repeated “Earlier notes” paragraphs are omitted from the reading page. The original Markdown remains unchanged. English heading labels remain the navigation outline in either language. Search includes both languages and reveals the language of the selected result.
 
 ## Typography and export
 
