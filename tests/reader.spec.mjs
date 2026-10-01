@@ -151,6 +151,7 @@ test('reader and EPUB dialog do not overflow the viewport', async ({page}) => {
   const box=await page.locator('#epub-dialog').boundingBox(); expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x+box.width).toBeLessThanOrEqual(page.viewportSize().width+1);
 });
 test('specimen exports are explicitly labelled as specimens', async ({page},info) => {
+  if (await page.locator('#mobile-menu').isVisible()) await page.click('#mobile-menu');
   await page.click('#demo-button'); await expect(page.locator('#manuscript')).toBeVisible(); await epubDialog(page);
   const {files}=await epubDownload(page,info,'specimen'); expect(files['EPUB/title.xhtml']).toContain('not a translation');
 });

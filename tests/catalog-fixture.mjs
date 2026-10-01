@@ -6,7 +6,7 @@ export const config={works:[
 ]};
 export function blobSHA(text) {const data=Buffer.from(text);return createHash('sha1').update(`blob ${data.length}\0`).update(data).digest('hex');}
 export async function mockCatalog(page,{configuration=config,inject=true}={}) {
-  const state={files:{},status:{},rawStatus:{},requests:[],rawOverride:null,listingWait:null,truncated:{}};
+  const state={files:{},status:{},rawStatus:{},requests:[],rawOverride:null,listingWait:null,truncated:{},inlineContent:false,inlineOverrides:{}};
   state.files[names[0]]={
     'translation/en.md':'# Example text\n\nSynthetic interface fixture.\n\n## Opening\n\nEnglish opening paragraph.\n\n## Continuation\n\nEnglish continuation paragraph.',
     'source/bo.md':'# དཔེ་ཆ།\n\n## དང་པོ།\n\nབོད་ཡིག་གི་ཚིག་དང་པོ།\n\n## གཉིས་པ།\n\nབོད་ཡིག་གི་ཚིག་གཉིས་པ།'
@@ -30,7 +30,7 @@ export async function mockCatalog(page,{configuration=config,inject=true}={}) {
     }
     if(url.pathname.includes('/contents/')) {
       const path=decodeURIComponent(parts.slice(5).join('/')),text=state.files[name]?.[path];
-      return route.fulfill({status:text===undefined?404:200,contentType:'application/json',body:text===undefined?'{}':JSON.stringify({type:'file',path,name:path.split('/').pop(),sha:blobSHA(text),size:Buffer.byteLength(text)})});
+      return route.fulfill({status:text===undefined?404:200,contentType:'application/json',body:text===undefined?'{}':JSON.stringify({type:'file',path,name:path.split('/').pop(),sha:blobSHA(text),size:Buffer.byteLength(text),...(state.inlineContent?{encoding:'base64',content:state.inlineOverrides[path] ?? Buffer.from(text).toString('base64')}: {})})});
     }
     const sha=parts.at(-1),text=Object.values(state.files[name]).find(t=>blobSHA(t)===sha);
     return route.fulfill({status:text===undefined?404:200,contentType:'text/plain',body:text ?? 'Missing blob'});

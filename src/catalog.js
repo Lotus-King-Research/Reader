@@ -6,6 +6,17 @@ const textFile=path=>/\.(?:md|markdown|txt)$/i.test(path);
 const safePath=path=>typeof path==='string' && !!path && !path.startsWith('/') && !/[\\\u0000-\u001f]/.test(path) && path.split('/').every(part=>part && part!=='.' && part!=='..');
 const encoded=path=>path.split('/').map(encodeURIComponent).join('/');
 const api=endpoint=>`https://api.github.com/repos/${endpoint.owner}/${endpoint.repo}`;
+const notifyProgress=(callback,event)=>{try{callback?.(event);}catch{ /* Presentation callbacks cannot interrupt source verification. */ }};
+const byteFraction=(loaded,total)=>total>0?Math.min(loaded/total,0.94):loaded>0?Math.min(loaded/(loaded+65536),0.9):0;
+function waitFor(promise,signal) {
+  if(!signal)return promise;
+  if(signal.aborted)return Promise.reject(new DOMException('Cancelled','AbortError'));
+  return new Promise((resolve,reject)=>{
+    const abort=()=>reject(new DOMException('Cancelled','AbortError'));
+    signal.addEventListener('abort',abort,{once:true});
+    promise.then(value=>{signal.removeEventListener('abort',abort);resolve(value);},error=>{signal.removeEventListener('abort',abort);reject(error);});
+  });
+}
 function endpoint(input) {
   let url; try {url=new URL(input);} catch {throw new Error('Text URLs must be valid public HTTPS URLs.');}
   const host=url.hostname.toLowerCase();
@@ -51,6 +62,12 @@ function create(onChange=()=>{},config) {
     error=errors.join(' ');
   } catch(e) {error='Reader configuration is invalid: '+e.message;}
   let retryAt=0;
+  const refreshProgress=new Map(),inlineContent=new Map();
+  let inlineBytes=0;
+  function rememberInline(sha,bytes) {
+    inlineBytes-=inlineContent.get(sha)?.length || 0;inlineContent.delete(sha);inlineContent.set(sha,bytes);inlineBytes+=bytes.length;
+    while(inlineBytes>2*LIMIT || inlineContent.size>16){const oldest=inlineContent.keys().next().value;inlineBytes-=inlineContent.get(oldest).length;inlineContent.delete(oldest);}
+  }
   const get=id=>{const work=works.find(w=>w.id===id);if(!work) throw new Error('This work is not in the configured collection.');return work;};
   function pathFor(work,path) {
     if (!safePath(path) || !textFile(path) || (work.english.kind==='file'?path!==work.english.path:!path.startsWith(work.english.path+'/'))) throw new Error('Choose a configured text file.');
@@ -70,7 +87,7 @@ function create(onChange=()=>{},config) {
       sourceURL:englishURLs.url,githubURL:englishURLs.githubURL,revision:file?.sha || '',sourceBytes:file?.size || 0,checkedAt:work.checkedAt,
       sourceTextURL:sourceURLs.url,sourceGithubURL:sourceURLs.githubURL,sourcePath,sourceRevision:file?.sourceFile?.sha || '',sourceTextBytes:file?.sourceFile?.size || 0};
   }
-  async function request(url,{headers={},signal,limit=LIMIT}={}) {
+  async function request(url,{headers={},signal,limit=LIMIT,onProgress}={}) {
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000),cancel=()=>controller.abort();
     signal?.addEventListener('abort',cancel,{once:true});if(signal?.aborted) controller.abort();
     try {
@@ -86,8 +103,12 @@ function create(onChange=()=>{},config) {
         throw new Error(response.status===404?'The configured public text is unavailable or has been removed.':`The source returned HTTP ${response.status}.`);
       }
       if(Number(response.headers.get('content-length'))>limit)throw new Error('The source exceeds the reader’s size limit.');
+      const length=Number(response.headers.get('content-length')),encoding=response.headers.get('content-encoding');
+      const totalBytes=Number.isSafeInteger(length) && length>0 && (!encoding || encoding==='identity')?length:null;
+      notifyProgress(onProgress,{loadedBytes:0,totalBytes,phase:'download'});
       const reader=response.body.getReader(),chunks=[];let size=0;
-      while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>limit){await reader.cancel();throw new Error('The source exceeds the reader’s size limit.');}chunks.push(value);}
+      while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>limit){await reader.cancel();throw new Error('The source exceeds the reader’s size limit.');}chunks.push(value);notifyProgress(onProgress,{loadedBytes:size,totalBytes,phase:'download'});}
+      notifyProgress(onProgress,{loadedBytes:size,totalBytes:size,phase:'complete'});
       const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
       return {response,bytes};
     } catch(e) {
@@ -101,17 +122,26 @@ function create(onChange=()=>{},config) {
     if(!file || !safePath(file.path) || !/^[a-f0-9]{40}$/.test(file.sha) || !Number.isSafeInteger(file.size) || file.size<0)throw new Error('The repository returned invalid file revision information.');
     return {path:file.path,name:file.path.split('/').pop(),sha:file.sha,size:file.size};
   }
-  async function list(endpoint,cache) {
+  async function list(endpoint,cache,onProgress) {
     if(!endpoint.github)return [{path:endpoint.path,name:endpoint.path,sha:'',size:0}];
     if(Date.now()<retryAt)throw new Error('GitHub request limit reached. Automatic checks will resume shortly.');
     const headers={Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
     if(endpoint.kind==='file') {
-      const {bytes}=await request(api(endpoint)+`/contents/${encoded(endpoint.path)}?ref=${encodeURIComponent(endpoint.ref)}`,{headers,limit:2*1024*1024});
+      const {bytes}=await request(api(endpoint)+`/contents/${encoded(endpoint.path)}?ref=${encodeURIComponent(endpoint.ref)}`,{headers,limit:2*1024*1024,onProgress});
       const file=json(bytes);if(file.type!=='file' || file.path!==endpoint.path)throw new Error('The configured URL no longer identifies a public text file.');
-      return [validateFile(file)];
+      const entry=validateFile(file);
+      // GitHub already transfers small text bodies inside its metadata response.
+      // Keep only verified bytes in a private, bounded memory cache.
+      if(file.encoding==='base64' && typeof file.content==='string' && entry.size<=LIMIT) {
+        try {
+          const decoded=atob(file.content.replace(/\s/g,''));
+          if(decoded.length===entry.size){const inline=new Uint8Array(decoded.length);for(let i=0;i<decoded.length;i++)inline[i]=decoded.charCodeAt(i);if(await matches(inline,entry.sha))rememberInline(entry.sha,inline);}
+        } catch { /* Invalid inline bodies use the raw/Git-blob verification path. */ }
+      }
+      return [entry];
     }
     const url=api(endpoint)+`/git/trees/${encodeURIComponent(endpoint.ref)}?recursive=1`;
-    if(!cache.has(url))cache.set(url,request(url,{headers,limit:TREE_LIMIT}).then(({bytes})=>{
+    if(!cache.has(url))cache.set(url,request(url,{headers,limit:TREE_LIMIT,onProgress}).then(({bytes})=>{
       const listing=json(bytes);if(!Array.isArray(listing.tree) || listing.truncated!==false)throw new Error('The repository listing is incomplete. Select a smaller repository or individual text files.');return listing.tree;
     }));
     const tree=await cache.get(url);
@@ -119,22 +149,36 @@ function create(onChange=()=>{},config) {
     if(new Set(files.map(f=>f.path)).size!==files.length)throw new Error('The repository listing contains duplicate paths.');
     return files.sort((a,b)=>a.path.localeCompare(b.path,undefined,{numeric:true}));
   }
-  async function refresh(id,{force=false}={}) {
-    const work=get(id);if(work.pending)return work.pending;
-    if(!force && Date.now()-work.attemptedAt<INTERVAL)return !work.error && !!work.checkedAt;
-    work.pending=(async()=>{
-      work.attemptedAt=Date.now();work.error='';work.sourceError='';
-      try {
-        const cache=new Map(), results=await Promise.allSettled([list(work.english,cache),list(work.source,cache)]);
-        if(results[0].status==='rejected')throw results[0].reason;
-        const sourceFiles=results[1].status==='fulfilled'?results[1].value:[];
-        if(results[1].status==='rejected')work.sourceError=results[1].reason.message;
-        const byPath=new Map(sourceFiles.map(file=>[file.path,file]));
-        work.volumes=results[0].value.map(file=>({...file,sourceFile:byPath.get(pairedPath(work,file.path)) || null}));
-        work.checkedAt=Date.now();return true;
-      } catch(e) {work.error=e instanceof TypeError?'GitHub could not be reached. Check your connection and try again.':e.message;return false;}
-    })();onChange();
-    try{return await work.pending;}finally{work.pending=null;onChange();}
+  async function refresh(id,{force=false,onProgress}={}) {
+    const work=get(id);
+    let tracker=refreshProgress.get(work);
+    if(!tracker){tracker={listeners:new Set(),last:null};refreshProgress.set(work,tracker);}
+    if(onProgress){tracker.listeners.add(onProgress);if(tracker.last && work.pending)notifyProgress(onProgress,tracker.last);}
+    try {
+      if(work.pending)return await work.pending;
+      if(!force && Date.now()-work.attemptedAt<INTERVAL)return !work.error && !!work.checkedAt;
+      const states=[{loadedBytes:0,totalBytes:null,done:false},{loadedBytes:0,totalBytes:null,done:false}];
+      const metadataProgress=(index,event)=>{
+        Object.assign(states[index],event);
+        const progress=0.15*states.reduce((sum,state)=>sum+(state.done?1:byteFraction(state.loadedBytes,state.totalBytes)),0)/2;
+        tracker.last={stage:'metadata',progress,loadedBytes:states.reduce((sum,state)=>sum+state.loadedBytes,0),totalBytes:states.every(state=>state.totalBytes!==null)?states.reduce((sum,state)=>sum+state.totalBytes,0):null,language:index===0?'en':work.sourceLanguage,phase:event.done?'complete':'download'};
+        for(const listener of tracker.listeners)notifyProgress(listener,tracker.last);
+      };
+      tracker.last=null;
+      work.pending=(async()=>{
+        work.attemptedAt=Date.now();work.error='';work.sourceError='';
+        try {
+          const cache=new Map(), results=await Promise.allSettled([work.english,work.source].map((endpoint,index)=>list(endpoint,cache,event=>metadataProgress(index,event)).finally(()=>metadataProgress(index,{done:true,totalBytes:states[index].loadedBytes}))));
+          if(results[0].status==='rejected')throw results[0].reason;
+          const sourceFiles=results[1].status==='fulfilled'?results[1].value:[];
+          if(results[1].status==='rejected')work.sourceError=results[1].reason.message;
+          const byPath=new Map(sourceFiles.map(file=>[file.path,file]));
+          work.volumes=results[0].value.map(file=>({...file,sourceFile:byPath.get(pairedPath(work,file.path)) || null}));
+          work.checkedAt=Date.now();return true;
+        } catch(e) {work.error=e instanceof TypeError?'GitHub could not be reached. Check your connection and try again.':e.message;return false;}
+      })();onChange();
+      try{return await work.pending;}finally{work.pending=null;onChange();}
+    } finally {if(onProgress)tracker.listeners.delete(onProgress);}
   }
   async function refreshAll(options) {for(const work of works)await refresh(work.id,options);}
   async function matches(bytes,sha) {
@@ -142,25 +186,58 @@ function create(onChange=()=>{},config) {
     const header=new TextEncoder().encode(`blob ${bytes.length}\0`),blob=new Uint8Array(header.length+bytes.length);blob.set(header);blob.set(bytes,header.length);
     const digest=await crypto.subtle.digest('SHA-1',blob);return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join('')===sha;
   }
-  async function readFile(endpoint,file,signal) {
+  async function readFile(endpoint,file,signal,onProgress) {
+    if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
     if(file.size>LIMIT)throw new Error('This text exceeds the 4 MB manuscript limit.');
-    const url=locations(endpoint,file.path).url;let bytes;
-    if(!endpoint.github){({bytes}=await request(url,{signal}));return new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);}
-    try {({bytes}=await request(url+'?revision='+file.sha,{signal}));if(!await matches(bytes,file.sha))bytes=null;}catch(e){if(signal?.aborted)throw e;bytes=null;}
-    if(!bytes){if(Date.now()<retryAt)throw new Error('The latest file could not be verified while GitHub is limiting requests. Your open text is unchanged.');({bytes}=await request(api(endpoint)+'/git/blobs/'+file.sha,{signal,headers:{Accept:'application/vnd.github.raw+json'}}));if(globalThis.crypto?.subtle && !await matches(bytes,file.sha))throw new Error('The text failed its revision check. Please try again.');}
+    const url=locations(endpoint,file.path).url;let bytes,transferred=0,totalBytes=file.size || null;
+    const report=phase=>notifyProgress(onProgress,{loadedBytes:transferred,totalBytes,phase});
+    const download=async(target,headers)=>{
+      const previous=transferred;
+      return request(target,{signal,headers,onProgress:event=>{
+        transferred=previous+event.loadedBytes;
+        if(event.totalBytes!==null)totalBytes=Math.max(totalBytes || 0,previous+event.totalBytes);
+        report('download');
+      }});
+    };
+    const inline=endpoint.github?inlineContent.get(file.sha):null;
+    if(inline && inline.length===file.size){totalBytes=0;report('verify');const text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(inline);report('complete');return text;}
+    if(!endpoint.github){({bytes}=await download(url));const text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);report('complete');return text;}
+    try {({bytes}=await download(url+'?revision='+file.sha));report('verify');if(!await matches(bytes,file.sha))bytes=null;}catch(e){if(signal?.aborted)throw e;bytes=null;}
+    if(!bytes){if(Date.now()<retryAt)throw new Error('The latest file could not be verified while GitHub is limiting requests. Your open text is unchanged.');report('fallback');({bytes}=await download(api(endpoint)+'/git/blobs/'+file.sha,{Accept:'application/vnd.github.raw+json'}));report('verify');if(globalThis.crypto?.subtle && !await matches(bytes,file.sha))throw new Error('The text failed its revision check. Please try again.');}
     if(bytes.length!==file.size)throw new Error('The text size does not match the published revision.');
-    return new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);
+    const text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);report('complete');return text;
   }
-  async function read(id,path,signal) {
+  async function read(id,path,signal,onProgress,{reuseFresh=false}={}) {
     const work=get(id);pathFor(work,path);
-    if(!await refresh(id,{force:true}))throw new Error(work.error || 'The latest English text could not be verified.');
+    let progress=0;
+    const report=event=>{if(signal?.aborted)return;progress=Math.max(progress,event.progress);notifyProgress(onProgress,{...event,progress});};
+    if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
+    report({stage:'metadata',progress:0,loadedBytes:0,totalBytes:null,language:null,phase:'download'});
+    if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
+    const age=Date.now()-work.checkedAt;
+    const fresh=reuseFresh && work.checkedAt && !work.error && !work.sourceError && !work.pending && age>=0 && age<INTERVAL;
+    if(fresh)report({stage:'metadata',progress:0.15,loadedBytes:0,totalBytes:0,language:null,phase:'complete'});
+    else {
+      let checked;
+      try {checked=await waitFor(refresh(id,{force:true,onProgress:report}),signal);}
+      finally {refreshProgress.get(work)?.listeners.delete(report);}
+      if(!checked)throw new Error(work.error || 'The latest English text could not be verified.');
+    }
     if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
     const file=work.volumes.find(f=>f.path===path);if(!file)throw new Error('This text is no longer in the configured repository.');
-    const entry=descriptor(id,path);
-    const results=await Promise.allSettled([readFile(work.english,file,signal),file.sourceFile?readFile(work.source,file.sourceFile,signal):Promise.reject(new Error(work.sourceError || 'The matching source text is unavailable.'))]);
+    const entry=descriptor(id,path),states=[{loadedBytes:0,totalBytes:file.size || null,fraction:0},{loadedBytes:0,totalBytes:file.sourceFile?.size || null,fraction:file.sourceFile?0:1}];
+    const weights=[file.size || 65536,file.sourceFile?(file.sourceFile.size || 65536):0],weight=weights[0]+weights[1];
+    const downloadProgress=(index,event)=>{
+      Object.assign(states[index],event);
+      states[index].fraction=Math.max(states[index].fraction,event.phase==='complete'?1:byteFraction(event.loadedBytes,event.totalBytes));
+      report({stage:'download',progress:0.15+0.83*states.reduce((sum,state,i)=>sum+state.fraction*weights[i],0)/weight,loadedBytes:states.reduce((sum,state)=>sum+state.loadedBytes,0),totalBytes:states.every((state,i)=>!weights[i] || state.totalBytes!==null)?states.reduce((sum,state)=>sum+(state.totalBytes || 0),0):null,language:index===0?'en':work.sourceLanguage,phase:event.phase});
+    };
+    downloadProgress(0,{loadedBytes:0,totalBytes:states[0].totalBytes,phase:'download'});
+    const results=await Promise.allSettled([readFile(work.english,file,signal,event=>downloadProgress(0,event)),file.sourceFile?readFile(work.source,file.sourceFile,signal,event=>downloadProgress(1,event)):Promise.reject(new Error(work.sourceError || 'The matching source text is unavailable.'))]);
     if(signal?.aborted)throw new DOMException('Cancelled','AbortError');if(results[0].status==='rejected')throw results[0].reason;
     const sourceText=results[1].status==='fulfilled'?results[1].value:'',sourceError=results[1].status==='rejected'?results[1].reason.message:'';
     const sourceDescriptor=sourceError?null:{...entry,id:entry.id+':source',path:entry.sourcePath,title:work.originalTitle || work.title,sourceURL:entry.sourceTextURL,githubURL:entry.sourceGithubURL,revision:entry.sourceRevision,sourceBytes:entry.sourceTextBytes,language:work.sourceLanguage};
+    report({stage:'ready',progress:1,loadedBytes:states.reduce((sum,state)=>sum+state.loadedBytes,0),totalBytes:states.reduce((sum,state)=>sum+state.loadedBytes,0),language:null,phase:'complete'});
     return {text:results[0].value,sourceText,sourceError,sourceURL:entry.sourceURL,sourceDescriptor,descriptor:entry};
   }
   function identify(input) {

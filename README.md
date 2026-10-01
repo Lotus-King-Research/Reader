@@ -2,7 +2,7 @@
 
 [Open the reader](https://reader.padma.io) · [Browser checks](https://github.com/Lotus-King-Research/Reader/actions/workflows/ci.yml)
 
-An English–Tibetan reading room built from [Lukija](https://github.com/mikkokotila/Lukija), with its history preserved. Published manuscripts stay in their source repositories. The reader loads a configured English translation and Tibetan source together; each section has its own language switch. Use the section button, the toolbar, or **T**. Other sections retain their language.
+An English–Tibetan reader built from [Lukija](https://github.com/mikkokotila/Lukija), with its history preserved. Published manuscripts stay in their source repositories. The reader loads a configured English translation and Tibetan source together; select a passage, right-click, and choose **Show Tibetan**. Select the Tibetan and choose **Show English** to return. A selection spanning passages switches those passages together. On touch screens, the same menu appears after text selection. Other passages retain their language.
 
 ## Publish a text
 
@@ -26,7 +26,7 @@ Edit `public/reader-config.json`, add a work, run `npm run build`, and deploy. T
 
 The repository name and two URLs are required. Other fields are optional. Use public Markdown or UTF-8 text URLs; GitHub blob and raw URLs work. A pair of GitHub tree URLs supports a collection of nested files, matched by their relative filenames. Any `.md`, `.markdown`, or `.txt` filename works. Use distinct IDs when multiple entries use the same repository.
 
-The collection can be searched by title, source title, or repository. Text bodies load only when selected. Public GitHub sources use revision verification, with update checks for the active work every five minutes while visible. The reader discovers work metadata on demand to avoid exhausting GitHub’s anonymous API quota. A newer revision requires **Load latest**; it never replaces a passage mid-read. Public URLs on other hosts require browser CORS access and have no GitHub revision guarantee. Private repositories require downloading the files and opening them locally; credentials are never embedded.
+A work card opens its text directly. Directory collections show available editions in a dropdown on the card. The loading bar reports source transfer and page preparation progress; an already open text resumes without downloading again. The collection can be searched by title, source title, or repository. Text loading and edition discovery happen on demand. Verified text bodies included in GitHub metadata are reused to avoid downloading them twice. Public GitHub sources use revision verification, with update checks for the active work every five minutes while visible. The reader discovers work metadata on demand to avoid exhausting GitHub’s anonymous API quota. A newer revision requires **Load latest**; it never replaces a passage mid-read. Public URLs on other hosts require browser CORS access and have no GitHub revision guarantee. Private repositories require downloading the files and opening them locally; credentials are never embedded.
 
 ## Align sections
 
@@ -41,15 +41,15 @@ For ordinary Markdown, a leading H1 is the work title. Subsequent headings divid
 ]
 ```
 
-Give stable IDs to Markdown headings with HTML such as `<h2 id="opening">The opening</h2>`. Use the original ID in configuration (the reader also accepts its `md-` prefixed form). Explicit maps disable ordinal fallback. Unmatched sections stay English and identify the missing alignment. Introductory text before the first section uses `opening`; avoid using that ID on a heading. A text without headings is treated as one section.
+Give stable IDs to Markdown headings with HTML such as `<h2 id="opening">The opening</h2>`. Use the original ID in configuration (the reader also accepts its `md-` prefixed form). Explicit maps disable ordinal fallback. Unmatched sections stay English; Copy remains available in the selection menu. Introductory text before the first section uses `opening`; avoid using that ID on a heading. A text without headings is treated as one section.
 
-A missing or invalid Tibetan source leaves the English translation readable and displays the failure. Source texts retain their own notes and links. Endnotes for each language remain available whenever a section uses that language. English headings remain the navigation outline in either language. Search includes both languages and reveals the language of the selected result.
+A missing or invalid Tibetan source leaves the English translation readable and displays the failure. Source texts retain their own notes and links. The sticky toolbar’s notes icon shows or hides endnote references and endnotes; they are hidden by default. In paired-text manuscripts, standalone references attach to the preceding prose, legacy note links become optional superscripts, and repeated “Earlier notes” paragraphs are omitted from the reading page. The original Markdown remains unchanged. English headings remain the navigation outline in either language. Search includes both languages and reveals the language of the selected result.
 
 ## Typography and export
 
 Noto Sans Tibetan Regular is bundled and embedded into the standalone HTML, including offline exports. It is the requested Noto **Sans** Tibetan font from the official Noto archive, not a substituted Serif font. The SIL Open Font License and provenance are in `public/fonts/`.
 
-Local Markdown files and pasted texts stay on the device. **Manuscript & source** provides Markdown download, offline HTML, EPUB, and printing. An offline HTML copy includes both loaded manuscripts and the font; section switches work without network access. EPUB includes the currently visible language of each section, with language tags. Its font choice depends on the reading device; the Tibetan font is not embedded in EPUB. No translation is generated or corrected. The typography specimen is synthetic interface documentation.
+Local Markdown files and pasted texts stay on the device. **Manuscript & source** provides Markdown download, offline HTML, EPUB, and printing. An offline HTML copy includes both loaded manuscripts and the font; section switches work without network access. EPUB includes the currently visible language of each section, with language tags and relevant endnotes regardless of the on-screen notes toggle. Its font choice depends on the reading device; the Tibetan font is not embedded in EPUB. No translation is generated or corrected. The typography specimen is synthetic interface documentation.
 
 Preferences, positions, and bookmarks use browser storage; manuscript bodies are never stored there. Markdown is sanitized before display. Files are limited to 4 MB each. No analytics or account flow is included.
 
@@ -66,7 +66,7 @@ npm test
 
 `public/index.html` contains the application shell. `src/catalog.js`, `src/parallel.js`, and `src/epub.js` are embedded by `scripts/build.mjs`, together with configuration and the Tibetan font. Commit source modules and built HTML together. `npm run serve` provides the local test server.
 
-Browser tests cover desktop and phone layouts, source verification, arbitrary filenames and nested collections, alignment, per-section toggling, failures, language tags, export, notes, and local imports. Test fixtures are synthetic. CI runs browser tests and validates the generated EPUBs using EPUBCheck 5.4.0. Locally, set `EPUBCHECK_JAR` and run `npm run test:epub` to perform the same EPUB validation.
+Browser tests cover desktop and phone layouts, source verification, arbitrary filenames and nested collections, alignment, selection context menus, inline editions, loading progress, cancellation, failures, language tags, export, notes, and local imports. Test fixtures are synthetic. CI runs browser tests and validates the generated EPUBs using EPUBCheck 5.4.0. Locally, set `EPUBCHECK_JAR` and run `npm run test:epub` to perform the same EPUB validation.
 
 ## Cloudflare deployment
 
