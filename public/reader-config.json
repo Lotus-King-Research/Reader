@@ -18,6 +18,24 @@
       "englishUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Togden-Gongchig-Drelwa/main/paired/translation.md",
       "sourceUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Togden-Gongchig-Drelwa/main/paired/source.md",
       "sourceLanguage": "bo"
+    },
+    {
+      "id": "gongchig-chawa",
+      "repository": "Lotus-King-Translation/Gongchig-Chawa",
+      "title": "Gongchig Chawa",
+      "description": "Provisional Tibetan source and annotated English working translation.",
+      "englishUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Gongchig-Chawa/main/paired/translation.md",
+      "sourceUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Gongchig-Chawa/main/paired/source.md",
+      "sourceLanguage": "bo"
+    },
+    {
+      "id": "togden-nangpa-sangyepa",
+      "repository": "Lotus-King-Translation/Togden-Nangpa-Sangyepa",
+      "title": "Togden Rinpoche’s Refuge Instructions",
+      "description": "Provisional Tibetan source and annotated English working translation.",
+      "englishUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Togden-Nangpa-Sangyepa/main/paired/translation.md",
+      "sourceUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Togden-Nangpa-Sangyepa/main/paired/source.md",
+      "sourceLanguage": "bo"
     }
   ]
 }
