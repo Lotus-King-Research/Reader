@@ -4,8 +4,17 @@ let fixture;
 test.beforeEach(async({page})=>{fixture=await mockCatalog(page,{configuration:{works:[]}});await page.goto('/');});
 async function create(page,configuration=config) {await page.evaluate(configuration=>window.testCatalog=ReaderCatalog.create(()=>{},configuration),configuration);}
 const snapshot=page=>page.evaluate(()=>testCatalog.works.map(({id,title,originalTitle,volumes,error,sourceError})=>({id,title,originalTitle,volumes,error,sourceError})));
-test('live deployment starts with an empty configuration',async({page})=>{
-  const response=await page.request.get('/reader-config.json');expect(await response.json()).toEqual({works:[]});
+test('published config includes Dra Thal Gyur without fetching its manuscripts',async({page})=>{
+  const response=await page.request.get('/reader-config.json'),published=await response.json();
+  expect(published.works).toHaveLength(1);
+  expect(published.works[0]).toMatchObject({id:'dra-thal-gyur',repository:'Lotus-King-Translation/Dra-Thal-Gyur',sourceLanguage:'bo'});
+  expect(published.works[0].englishUrl).toMatch(/\/paired\/translation\.md$/);
+  expect(published.works[0].sourceUrl).toMatch(/\/paired\/source\.md$/);
+  await create(page,published);
+  const entry=await page.evaluate(()=>testCatalog.descriptor('dra-thal-gyur','paired/translation.md'));
+  expect(entry.sourceURL).toBe('https://raw.githubusercontent.com/Lotus-King-Translation/Dra-Thal-Gyur/main/paired/translation.md');
+  expect(entry.sourceTextURL).toBe('https://raw.githubusercontent.com/Lotus-King-Translation/Dra-Thal-Gyur/main/paired/source.md');
+  expect(fixture.requests).toHaveLength(0);
   await create(page,{works:[]});expect(await snapshot(page)).toEqual([]);
 });
 test('paired files load independently verified English and Tibetan revisions',async({page})=>{

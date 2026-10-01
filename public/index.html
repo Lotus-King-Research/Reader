@@ -3512,7 +3512,18 @@ nav ol { padding-left: 1.3em; } nav li { margin: .6em 0; }
 </script>
 <script id="reader-config" type="application/json">
 {
-  "works": []
+  "works": [
+    {
+      "id": "dra-thal-gyur",
+      "repository": "Lotus-King-Translation/Dra-Thal-Gyur",
+      "title": "Dra Thal Gyur",
+      "originalTitle": "སྒྲ་ཐལ་འགྱུར།",
+      "description": "Paired Tibetan source and English translation.",
+      "englishUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Dra-Thal-Gyur/main/paired/translation.md",
+      "sourceUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Dra-Thal-Gyur/main/paired/source.md",
+      "sourceLanguage": "bo"
+    }
+  ]
 }
 </script>
 <script id="parallel-engine">
@@ -3520,25 +3531,33 @@ nav ol { padding-left: 1.3em; } nav li { margin: .6em 0; }
 (() => {
 'use strict';
 const headings = 'H1 H2 H3 H4 H5 H6'.split(' ');
-function parts(fragment) {
-  const result=[]; let current=null;
-  for (const node of [...fragment.childNodes]) {
-    if (node.nodeType===1 && node.classList.contains('footnotes')) continue;
-    if (node.nodeType===1 && headings.includes(node.tagName)) {
-      current={id:node.id,level:node.tagName,nodes:[],heading:node}; result.push(current);
-    } else if (!current && (node.nodeType===1 || node.textContent.trim())) {
-      current={id:'opening',level:'opening',nodes:[],heading:null}; result.push(current);
+function parts(fragment,anchorAlignment=false) {
+  const result=[];let current=null;
+  for(const node of [...fragment.childNodes]) {
+    if(node.nodeType===1 && node.classList.contains('footnotes'))continue;
+    const anchor=node.nodeType===1 && !node.textContent.trim() ? (node.tagName==='A' ? node : node.tagName==='P' && node.children.length===1 ? node.firstElementChild : null) : null;
+    if(anchorAlignment && anchor?.tagName==='A' && anchor.id && !anchor.hasAttribute('href')){
+      current={id:anchor.id,level:'anchor',nodes:[],heading:null,anchor};result.push(current);
+    } else if(node.nodeType===1 && headings.includes(node.tagName)){
+      if(anchorAlignment){current=null;continue;}
+      current={id:node.id,level:node.tagName,nodes:[],heading:node};result.push(current);
+    } else if(!current && !anchorAlignment && (node.nodeType===1 || node.textContent.trim())){
+      current={id:'opening',level:'opening',nodes:[],heading:null};result.push(current);
     }
-    if (current) current.nodes.push(node);
+    if(current)current.nodes.push(node);
   }
   return result;
 }
-function build(english,source,{language='bo',sectionMap=[],onToggle=()=>{}}={}) {
-  const left=parts(english), right=parts(source), used=new Set(), pairs=[];
+function build(english,source,{language='bo',sectionMap=[],anchorAlignment=false,onToggle=()=>{}}={}) {
+  const left=parts(english,anchorAlignment), right=parts(source,anchorAlignment), used=new Set(), pairs=[],sections=[];
+  const englishNotes=[...english.children].find(el=>el.classList.contains('footnotes'));
+  const sourceNotes=source.querySelector('.footnotes');
+  if(sourceNotes){sourceNotes.classList.add('source-footnotes');sourceNotes.lang=language;sourceNotes.hidden=true;}
+  function syncNotes(){if(sourceNotes)sourceNotes.hidden=!pairs.some(pair=>pair.sourceVisible);if(englishNotes)englishNotes.hidden=pairs.length===left.length && pairs.length>0 && pairs.every(pair=>pair.sourceVisible);}
   const normalize=id=>id==='opening' ? id : id.startsWith('md-') ? id : 'md-'+id;
   const byId=new Map(right.map(part=>[part.id,part]));
   const sameOutline=left.length===right.length && left.every((part,i)=>part.level===right[i].level);
-  const canOrdinal=sameOutline && !sectionMap.length && left.every((part,i)=>!byId.has(part.id) || byId.get(part.id)===right[i]);
+  const canOrdinal=!anchorAlignment && sameOutline && !sectionMap.length && left.every((part,i)=>!byId.has(part.id) || byId.get(part.id)===right[i]);
   const explicit=new Map(sectionMap.map(item=>[normalize(item.english),normalize(item.source)]));
   const sourceIds=new Map();
   source.querySelectorAll('[id]').forEach(el=>{sourceIds.set(el.id,'source-'+el.id);el.id='source-'+el.id;});
@@ -3548,7 +3567,9 @@ function build(english,source,{language='bo',sectionMap=[],onToggle=()=>{}}={}) 
     let match=explicit.has(part.id) ? byId.get(explicit.get(part.id)) : byId.get(part.id);
     if (!match && canOrdinal) match=right[i];
     if (match && used.has(match)) match=null;
-    const section=document.createElement('section'); section.className='parallel-section'; section.id=part.id;
+    const section=document.createElement('section'); section.className='parallel-section'; section.id=part.id;sections.push(section);
+    if(part.anchor)part.anchor.removeAttribute('id');
+    part.nodes[0].replaceWith(section);
     const body=document.createElement('div'); body.className='english-passage'; body.lang='en';
     if (part.heading) {part.heading.id='english-'+part.id;part.heading.dataset.sectionAnchor=part.id;}
     body.append(...part.nodes); section.append(body);
@@ -3558,26 +3579,25 @@ function build(english,source,{language='bo',sectionMap=[],onToggle=()=>{}}={}) 
       const button=document.createElement('button');button.type='button';button.className='section-language-toggle';button.dataset.readerUi='';
       const pair={section,english:body,source:original,button,sourceVisible:false};
       const label=language==='bo'?'Tibetan':'Source';
-      pair.show=(visible,keepPosition=true)=>{
+      pair.show=(visible,keepPosition=true,silent=false)=>{
         const offset=section.getBoundingClientRect().top;
         pair.sourceVisible=visible;body.hidden=visible;original.hidden=!visible;
         button.textContent=visible?'English':label;button.setAttribute('aria-pressed',String(visible));
         button.setAttribute('aria-label','Show '+(visible?'English':label)+' for this section');
         if (keepPosition) window.scrollBy({top:section.getBoundingClientRect().top-offset,behavior:'instant'});
-        onToggle(pair);
+        syncNotes();if(!silent)onToggle(pair);
       };
-      pair.show(false,false);button.addEventListener('click',()=>pair.show(!pair.sourceVisible));
-      section.prepend(button);section.append(original);pairs.push(pair);
+      pairs.push(pair);pair.show(false,false,true);button.addEventListener('click',()=>pair.show(!pair.sourceVisible));
+      section.prepend(button);section.append(original);
     } else {
       const note=document.createElement('p');note.className='section-pair-unavailable';note.dataset.readerUi='';note.textContent='Source alignment unavailable for this section.';section.prepend(note);
     }
-    english.append(section);
   }
   // Endnotes retain their language and distinct targets even when headings differ.
-  const notes=source.querySelector('.footnotes');if(notes && pairs.length) pairs.at(-1).source.append(notes);
+  if(sourceNotes && pairs.length)english.append(sourceNotes);
   // append() moved sections after English endnotes; restore the original order.
-  const englishNotes=[...english.children].find(el=>el.classList.contains('footnotes'));if(englishNotes)english.append(englishNotes);
-  return {pairs,total:left.length,unpaired:left.length-pairs.length};
+  if(englishNotes)english.append(englishNotes);
+  return {pairs,sections,total:left.length,unpaired:left.length-pairs.length};
 }
 window.ReaderParallel=Object.freeze({build});
 })();
@@ -4046,9 +4066,9 @@ function safeDOM(html, base) {
     if (node.tagName === 'DETAILS' && node.hasAttribute('open')) el.open = true;
     if (node.tagName === 'INPUT') { el.type = 'checkbox'; el.disabled = true; el.checked = node.hasAttribute('checked'); }
     if (node.tagName === 'A') {
-      const rawHref = node.getAttribute('href') || '';
-      const localLink = !base && !/^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(rawHref) && /\.(md|markdown|txt)(?:#[^\s]*)?$/i.test(rawHref);
-      const href = localLink ? '#' : safeURL(rawHref,base);
+      const rawHref = node.getAttribute('href');
+      const localLink = rawHref !== null && !base && !/^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(rawHref) && /\.(md|markdown|txt)(?:#[^\s]*)?$/i.test(rawHref);
+      const href = rawHref === null ? null : localLink ? '#' : safeURL(rawHref,base);
       if (localLink) el.dataset.localLink = rawHref;
       if (href) {
         el.setAttribute('href',href);
@@ -4716,9 +4736,12 @@ function setBusy(on, text='Opening manuscript…') {
 }
 function sourceLanguageLabel() {return state.current?.sourceLanguage==='bo' || !state.current?.sourceLanguage ? 'Tibetan' : 'Source';}
 function activePair() {
-  const sections=[...$('manuscript').querySelectorAll('.parallel-section')];let active=sections[0];
-  for(const section of sections){if(section.getBoundingClientRect().top<=150)active=section;else break;}
-  return state.parallel?.pairs.find(pair=>pair.section===active) || null;
+  const sections=state.parallel?.sections || [];if(!sections.length)return null;
+  let low=0,high=sections.length;
+  while(low<high){const mid=(low+high)>>1;if(sections[mid].getBoundingClientRect().top<=150)low=mid+1;else high=mid;}
+  let section=sections[low-1];
+  if(!section || section.getBoundingClientRect().bottom<105)section=sections[low]?.getBoundingClientRect().top<innerHeight ? sections[low] : null;
+  return state.parallel?.pairs.find(pair=>pair.section===section) || null;
 }
 function syncLanguageToggle() {
   const pair=activePair(),button=$('language-toggle');button.hidden=state.view!=='reading' || !pair;
@@ -4727,12 +4750,13 @@ function syncLanguageToggle() {
 function toggleActiveLanguage(){const pair=activePair();if(pair && state.view==='reading')pair.show(!pair.sourceVisible);}
 $('language-toggle').addEventListener('click',toggleActiveLanguage);
 function revealPassage(el) {
+  const notes=el.closest('.footnotes');if(notes)notes.hidden=false;
   const pair=state.parallel?.pairs.find(item=>item.section.contains(el));
   if(pair && el.closest('.source-passage'))pair.show(true,false);
   else if(pair && el.closest('.english-passage'))pair.show(false,false);
 }
 function pairSections(fragment,original,candidate) {
-  state.parallel=ReaderParallel.build(fragment,original,{language:candidate.sourceLanguage || 'bo',sectionMap:candidate.sectionMap || [],onToggle:()=>{syncLanguageToggle();updateProgress();}});
+  state.parallel=ReaderParallel.build(fragment,original,{language:candidate.sourceLanguage || 'bo',sectionMap:candidate.sectionMap || [],anchorAlignment:candidate.metadata?.schema==='paired-text/1',onToggle:()=>{syncLanguageToggle();updateProgress();}});
   $('paired-status').textContent=state.parallel.pairs.length ? `${state.parallel.pairs.length} paired sections · Tap a section’s language button, use the toolbar, or press T.${state.parallel.unpaired ? ' Some sections need an alignment map.' : ''}` : 'Source alignment unavailable. Add section mappings to this text’s configuration.';
 }
 async function prepareParallel(fragment,candidate,signal) {
@@ -4741,6 +4765,10 @@ async function prepareParallel(fragment,candidate,signal) {
   if(!candidate.sourceText){if(candidate.sourceError){$('paired-status').textContent='Tibetan source unavailable. '+candidate.sourceError;$('paired-status').hidden=false;}return;}
   try {
     const compiled=await parseMarkdown(candidate.sourceText,signal);
+    if(candidate.metadata?.schema==='paired-text/1'){
+      if(compiled.metadata.schema!=='paired-text/1')throw new Error('The source is not the corresponding paired-text edition.');
+      for(const field of ['text-id','paired-edition'])if((candidate.metadata[field] || compiled.metadata[field]) && candidate.metadata[field]!==compiled.metadata[field])throw new Error('The English and source paired editions do not match.');
+    }
     const original=safeDOM(compiled.html,candidate.sourceDescriptor?.sourceURL || candidate.sourceTextURL);
     prepareContent(original,compiled.metadata,candidate.sourceDescriptor || candidate);
     state.parallelFragment=original.cloneNode(true);pairSections(fragment,original,candidate);
@@ -4776,7 +4804,7 @@ async function loadDocument(descriptor, options = {}) {
     $('source-status').textContent=candidate.kind === 'catalog' ? 'GitHub · '+candidate.revision.slice(0,7) : candidate.kind === 'specimen' ? 'Not source text' : candidate.kind === 'local' || candidate.kind === 'paste' || candidate.kind === 'embedded' ? 'Opened locally' : 'Loaded from source';
     $('source-button').disabled = false; $('bookmark-button').disabled = candidate.kind === 'specimen';
     const countable = $('manuscript').cloneNode(true);
-    countable.querySelectorAll('[data-reader-ui]').forEach(el=>el.remove());
+    countable.querySelectorAll('[data-reader-ui],[hidden]').forEach(el=>el.remove());
     const plainText = countable.textContent;
     const latinWords = (plainText.replace(/\p{Script=Han}/gu,' ').match(/[\p{L}\p{N}]+/gu) || []).length;
     const hanChars = (plainText.match(/\p{Script=Han}/gu) || []).length;
@@ -4898,7 +4926,7 @@ function buildWelcomeOutline() {
 }
 function buildOutline() {
   state.headings=[]; let section=0;
-  const els=[...$('manuscript').querySelectorAll('h1,h2,h3')].filter(el=>!el.closest('.source-passage'));
+  const els=[...$('manuscript').querySelectorAll('h1,h2,h3')].filter(el=>!el.closest('.source-passage,.source-footnotes'));
   for (const heading of els) {
     const level=Number(heading.tagName[1]); if (level<=2) section++;
     const text=heading.dataset.headingText || heading.textContent;

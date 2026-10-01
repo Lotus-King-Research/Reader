@@ -9,6 +9,22 @@ const english = '# The example text\n\n## The opening\n\nEnglish opening passage
 const tibetan = '# དཔེ་ཆ།\n\n## དང་པོ།\n\nདང་པོའི་བོད་ཡིག།\n\n## གཉིས་པ།\n\nགཉིས་པའི་བོད་ཡིག།';
 const sha = text => {const bytes = Buffer.from(text); return createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');};
 
+
+function storedZipEntry(bytes, wanted) {
+  let offset = 0;
+  while (offset + 30 <= bytes.length && bytes.readUInt32LE(offset) === 0x04034b50) {
+    const method = bytes.readUInt16LE(offset + 8), size = bytes.readUInt32LE(offset + 18);
+    const nameLength = bytes.readUInt16LE(offset + 26), extraLength = bytes.readUInt16LE(offset + 28);
+    const name = bytes.subarray(offset + 30,offset + 30 + nameLength).toString('utf8');
+    const start = offset + 30 + nameLength + extraLength;
+    expect(method).toBe(0);
+    expect(start + size).toBeLessThanOrEqual(bytes.length);
+    if (name === wanted) return bytes.subarray(start,start + size).toString('utf8');
+    offset = start + size;
+  }
+  throw new Error(`EPUB entry missing: ${wanted}`);
+}
+
 async function pairedFixture(page, options = {}) {
   const state = {files:{[englishPath]:options.english ?? english,[sourcePath]:options.source ?? tibetan},sourceStatus:options.sourceStatus ?? 200,requests:[]};
   const config = {works:[{id:'paired-text',repository,title:'Example text',originalTitle:'དཔེ་ཆ།',englishUrl:github(englishPath),sourceUrl:github(sourcePath),sourceLanguage:'bo',...(options.sections ? {sections:options.sections} : {})}]};
@@ -222,3 +238,142 @@ test('an unmatched active section cannot toggle an earlier paired passage', asyn
   await expect(unmatched.locator('.english-passage')).toBeVisible();
   await expect(page.locator('#language-toggle')).toBeHidden();
 });
+
+test('EPUB exports the selected language for each section and places endnotes last', async ({page}, info) => {
+  const englishWithNote = english.replace('English concluding passage.','English concluding passage.[^english-note]') + '\n\n[^english-note]: English concluding endnote.';
+  await pairedFixture(page, {english:englishWithNote});
+  await sections(page).nth(0).locator('.section-language-toggle').click();
+  await expect(sections(page).nth(0).locator('.source-passage')).toBeVisible();
+  await expect(sections(page).nth(1).locator('.english-passage')).toBeVisible();
+  await sourceDialog(page); await page.click('#export-epub');
+  await expect(page.locator('#epub-dialog')).toBeVisible();
+  const downloaded = page.waitForEvent('download'); await page.click('#epub-save');
+  const path = info.outputPath('mixed-language-reading.epub'); await (await downloaded).saveAs(path);
+  const content = storedZipEntry(await readFile(path),'EPUB/content.xhtml');
+  expect(content).toContain('དང་པོའི་བོད་ཡིག།');
+  expect(content).not.toContain('English opening passage.');
+  expect(content).toContain('English concluding passage.');
+  expect(content).not.toContain('གཉིས་པའི་བོད་ཡིག།');
+  const document = await page.evaluate(value => {
+    const parsed = new DOMParser().parseFromString(value,'application/xml');
+    const source = parsed.querySelector('.source-passage'), notes = parsed.querySelector('.footnotes');
+    const ids = [...parsed.querySelectorAll('[id]')].map(element => element.id);
+    return {error:parsed.querySelector('parsererror')?.textContent ?? '',language:source?.getAttribute('lang'),xmlLanguage:source?.getAttributeNS('http://www.w3.org/XML/1998/namespace','lang'),notesLast:(parsed.querySelector('main') || parsed.querySelector('body')).lastElementChild === notes,notes:notes?.textContent,brokenReferences:[...parsed.querySelectorAll('a[href^="#"]')].filter(link => !ids.includes(link.getAttribute('href').slice(1))).length};
+  }, content);
+  expect(document.error).toBe('');
+  expect(document.language).toBe('bo'); expect(document.xmlLanguage).toBe('bo');
+  expect(document.notesLast).toBe(true); expect(document.notes).toContain('English concluding endnote.');
+  expect(document.brokenReferences).toBe(0);
+});
+
+test('mixed-language reading retains Tibetan endnotes, popup and EPUB targets', async ({page}, info) => {
+  const sourceNote = 'བོད་ཡིག་གི་མཆན་འགྲེལ།';
+  const englishNote = 'English concluding endnote.';
+  const englishWithNote = english.replace('English concluding passage.','English concluding passage.[^english-note]') + `\n\n[^english-note]: ${englishNote}`;
+  const sourceWithNote = tibetan.replace('དང་པོའི་བོད་ཡིག།','དང་པོའི་བོད་ཡིག།[^source-note]') + `\n\n[^source-note]: ${sourceNote}`;
+  await pairedFixture(page, {english:englishWithNote,source:sourceWithNote});
+  const sourceNotes = page.locator('#manuscript .source-footnotes');
+  const englishNotes = page.locator('#manuscript .footnotes:not(.source-footnotes)');
+  await expect(sourceNotes).toBeHidden(); await expect(englishNotes).toBeVisible();
+  await sections(page).nth(0).locator('.section-language-toggle').click();
+  await expect(sourceNotes).toBeVisible(); await expect(sourceNotes).toHaveAttribute('lang','bo');
+  await expect(englishNotes).toBeVisible();
+  // Source endnotes depend on every visible passage, including one before the final section.
+  await sections(page).nth(1).locator('.section-language-toggle').click();
+  await expect(sourceNotes).toBeVisible(); await expect(englishNotes).toBeHidden();
+  await sections(page).nth(1).locator('.section-language-toggle').click();
+  await expect(sourceNotes).toBeVisible(); await expect(englishNotes).toBeVisible();
+  await sections(page).nth(0).locator('.source-passage .footnote-ref').click();
+  await expect(page.locator('#note-dialog')).toBeVisible();
+  await expect(page.locator('#note-content')).toContainText(sourceNote);
+  await expect(page.locator('#note-content')).not.toContainText(englishNote);
+  await page.locator('#note-dialog [data-close]').click();
+  await sourceDialog(page); await page.click('#export-epub');
+  const downloaded = page.waitForEvent('download'); await page.click('#epub-save');
+  const path = info.outputPath('mixed-language-endnotes.epub'); await (await downloaded).saveAs(path);
+  const content = storedZipEntry(await readFile(path),'EPUB/content.xhtml');
+  const document = await page.evaluate(value => {
+    const parsed = new DOMParser().parseFromString(value,'application/xml');
+    const sourceNotes = parsed.querySelector('.source-footnotes'), englishNotes = parsed.querySelector('.footnotes:not(.source-footnotes)');
+    const sourceRef = parsed.querySelector('.source-passage a[role="doc-noteref"]'), englishRef = parsed.querySelector('.english-passage a[role="doc-noteref"]');
+    const target = reference => reference && parsed.getElementById(reference.getAttribute('href').slice(1));
+    const sourceTarget = target(sourceRef), englishTarget = target(englishRef);
+    const tail = [...parsed.querySelector('main').children].slice(-2);
+    return {error:parsed.querySelector('parsererror')?.textContent ?? '',sourceLanguage:sourceNotes?.getAttribute('lang'),sourceXmlLanguage:sourceNotes?.getAttributeNS('http://www.w3.org/XML/1998/namespace','lang'),englishLanguage:englishNotes?.closest('[lang]')?.getAttribute('lang'),sourceTarget:sourceTarget?.textContent,englishTarget:englishTarget?.textContent,sourceTargetInNotes:sourceTarget?.closest('.source-footnotes') === sourceNotes,englishTargetInNotes:englishTarget?.closest('.footnotes') === englishNotes,notesLast:tail.length === 2 && tail.every(element => element.classList.contains('footnotes')),englishPassages:parsed.querySelectorAll('.english-passage').length,sourcePassages:parsed.querySelectorAll('.source-passage').length};
+  }, content);
+  expect(document.error).toBe('');
+  expect(document.sourceLanguage).toBe('bo'); expect(document.sourceXmlLanguage).toBe('bo');
+  expect(document.englishLanguage).toBe('en');
+  expect(document.sourceTarget).toContain(sourceNote); expect(document.sourceTargetInNotes).toBe(true);
+  expect(document.englishTarget).toContain(englishNote); expect(document.englishTargetInNotes).toBe(true);
+  expect(document.notesLast).toBe(true);
+  expect(document.englishPassages).toBe(1); expect(document.sourcePassages).toBe(1);
+});
+
+const anchorEnglish = '---\nschema: paired-text/1\nlanguage: en\n---\n# The example text\n\n## Chapter 1\n\n<a id="dtg-000001"></a>\n\nEnglish opening passage.\n\n<a id="dtg-000002"></a>\n\nEnglish middle passage, with a second paragraph.\n\nAnother English paragraph in the same anchored passage.\n\n## Chapter 2\n\n<a id="dtg-000003"></a>\n\nEnglish concluding passage.\n\n## Editorial notes\n\nEnglish editorial material outside the aligned passages.';
+const anchorSource = '---\nschema: paired-text/1\nlanguage: bo\n---\n# དཔེ་ཆ།\n\n## ལེའུ་དང་པོ།\n\n<a id="dtg-000001"></a>\n\nདང་པོའི་བོད་ཡིག།[^source-note]\n\nདང་པོའི་ས་བཅད་གཞན་པ།\n\n<a id="dtg-000002"></a>\n\nབར་མའི་བོད་ཡིག།\n\n## ལེའུ་གཉིས་པ།\n\n<a id="dtg-000003"></a>\n\nགཉིས་པའི་བོད་ཡིག།\n\n[^source-note]: བོད་ཡིག་གི་མཆན་འགྲེལ།';
+
+// This schema matches public paired-text/1 block anchors without snapshotting a manuscript.
+test('paired-text/1 aligns anchored passages independently of chapter and note headings', async ({page}) => {
+  await pairedFixture(page, {english:anchorEnglish,source:anchorSource});
+  await expect(sections(page)).toHaveCount(3);
+  await expect(sections(page).locator('.section-language-toggle')).toHaveCount(3);
+  await expect(sections(page).locator('h2')).toHaveCount(0);
+  await expect(page.locator('#manuscript > h2')).toHaveCount(3);
+  await expect(page.locator('#manuscript')).toContainText('English editorial material outside the aligned passages.');
+  const first = sections(page).nth(0), middle = sections(page).nth(1), last = sections(page).nth(2);
+  await middle.locator('.section-language-toggle').click();
+  await expect(middle.locator('.source-passage')).toContainText('བར་མའི་བོད་ཡིག།');
+  await expect(middle.locator('.english-passage')).toBeHidden();
+  await expect(first.locator('.english-passage')).toBeVisible();
+  await expect(last.locator('.english-passage')).toBeVisible();
+  await first.locator('.section-language-toggle').click();
+  await expect(first.locator('.source-passage')).toContainText('དང་པོའི་ས་བཅད་གཞན་པ།');
+  await expect(page.locator('#manuscript .source-footnotes')).toBeVisible();
+  await first.locator('.source-passage .footnote-ref').click();
+  await expect(page.locator('#note-content')).toContainText('བོད་ཡིག་གི་མཆན་འགྲེལ།');
+});
+
+test('paired-text/1 missing source anchors never pair a different passage by order', async ({page}) => {
+  const missingMiddle = anchorSource.replace('<a id="dtg-000002"></a>\n\nབར་མའི་བོད་ཡིག།\n\n','');
+  await pairedFixture(page, {english:anchorEnglish,source:missingMiddle});
+  await expect(sections(page)).toHaveCount(3);
+  await expect(sections(page).locator('.section-language-toggle')).toHaveCount(2);
+  const middle = sections(page).nth(1), last = sections(page).nth(2);
+  await expect(middle.locator('.section-language-toggle, .source-passage')).toHaveCount(0);
+  await expect(middle.locator('.english-passage')).toContainText('English middle passage');
+  await last.locator('.section-language-toggle').click();
+  await expect(last.locator('.source-passage')).toContainText('གཉིས་པའི་བོད་ཡིག།');
+  await expect(last.locator('.source-passage')).not.toContainText('དང་པོའི་བོད་ཡིག།');
+});
+
+test('paired-text/1 empty anchor deep links survive language switching', async ({page}) => {
+  const longEnglish = anchorEnglish.replace('English opening passage.','English opening passage.\n\n' + 'An English paragraph before the linked passage.\n\n'.repeat(35)).replace('English concluding passage.','English concluding passage.\n\n' + 'An English paragraph after the linked passage.\n\n'.repeat(35));
+  await pairedFixture(page, {english:longEnglish,source:anchorSource});
+  await page.goto('/?work=paired-text&file=translation%2Fen.md#dtg-000002');
+  const linked = page.locator('#md-dtg-000002');
+  await expect(linked).toHaveCount(1);
+  await expect(linked).toHaveClass(/parallel-section/);
+  await expect.poll(() => linked.evaluate(element => Math.round(element.getBoundingClientRect().top))).toBeGreaterThanOrEqual(70);
+  await expect.poll(() => linked.evaluate(element => Math.round(element.getBoundingClientRect().top))).toBeLessThanOrEqual(page.viewportSize().height / 2);
+  const before = await linked.evaluate(element => element.getBoundingClientRect().top);
+  await linked.locator('.section-language-toggle').click();
+  await expect(linked.locator('.source-passage')).toContainText('བར་མའི་བོད་ཡིག།');
+  await expect(page.locator('#md-dtg-000002')).toHaveCount(1);
+  await expect.poll(async () => Math.abs(await linked.evaluate(element => element.getBoundingClientRect().top) - before)).toBeLessThan(3);
+  await linked.locator('.section-language-toggle').click();
+  await expect(linked.locator('.english-passage')).toContainText('Another English paragraph in the same anchored passage.');
+  await expect(page.locator('#md-dtg-000002')).toHaveCount(1);
+});
+
+for (const field of ['paired-edition','text-id']) {
+  test(`paired-text/1 rejects a mismatched ${field} before language switching`, async ({page}) => {
+    const englishMismatch = anchorEnglish.replace('schema: paired-text/1',`schema: paired-text/1\n${field}: english-revision`);
+    const sourceMismatch = anchorSource.replace('schema: paired-text/1',`schema: paired-text/1\n${field}: different-source-revision`);
+    await pairedFixture(page, {english:englishMismatch,source:sourceMismatch});
+    await expect(page.locator('#paired-status')).toContainText(/paired editions do not match/i);
+    await expect(page.locator('#language-toggle')).toBeHidden();
+    await expect(page.locator('#manuscript .source-passage')).toHaveCount(0);
+    await expect(page.locator('#manuscript')).toContainText('English concluding passage.');
+  });
+}

@@ -1,3 +1,14 @@
 {
-  "works": []
+  "works": [
+    {
+      "id": "dra-thal-gyur",
+      "repository": "Lotus-King-Translation/Dra-Thal-Gyur",
+      "title": "Dra Thal Gyur",
+      "originalTitle": "སྒྲ་ཐལ་འགྱུར།",
+      "description": "Paired Tibetan source and English translation.",
+      "englishUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Dra-Thal-Gyur/main/paired/translation.md",
+      "sourceUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Dra-Thal-Gyur/main/paired/source.md",
+      "sourceLanguage": "bo"
+    }
+  ]
 }

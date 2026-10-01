@@ -6,7 +6,7 @@ An English–Tibetan reading room built from [Lukija](https://github.com/mikkoko
 
 ## Publish a text
 
-Edit `public/reader-config.json`, add a work, run `npm run build`, and deploy. The initial catalogue is empty until publication URLs are supplied.
+Edit `public/reader-config.json`, add a work, run `npm run build`, and deploy. The first published work is [Dra Thal Gyur](https://github.com/Lotus-King-Translation/Dra-Thal-Gyur), using its paired Tibetan source and English translation.
 
 ```json
 {
@@ -30,7 +30,9 @@ The collection can be searched by title, source title, or repository. Text bodie
 
 ## Align sections
 
-A leading H1 is the work title. Subsequent headings divide the manuscript into sections. The reader first matches identical heading IDs. If both outlines have the same number and heading levels, and stable IDs do not indicate reordered sections, it pairs them by order. The publisher must ensure the sections correspond. For differing outlines or ordering, provide explicit mappings:
+Manuscripts using `schema: paired-text/1` frontmatter are aligned by their shared empty HTML anchors, one passage per ID. Chapter headings remain outside those passages as navigation. IDs are matched exactly; missing anchors never fall back to order. Paired text IDs and edition metadata must agree. Dra Thal Gyur uses this format with 2,660 aligned passages.
+
+For ordinary Markdown, a leading H1 is the work title. Subsequent headings divide the manuscript into sections. The reader first matches identical heading IDs. If both outlines have the same number and heading levels, and stable IDs do not indicate reordered sections, it pairs them by order. The publisher must ensure the sections correspond. For differing outlines or ordering, provide explicit mappings:
 
 ```json
 "sections": [
@@ -41,7 +43,7 @@ A leading H1 is the work title. Subsequent headings divide the manuscript into s
 
 Give stable IDs to Markdown headings with HTML such as `<h2 id="opening">The opening</h2>`. Use the original ID in configuration (the reader also accepts its `md-` prefixed form). Explicit maps disable ordinal fallback. Unmatched sections stay English and identify the missing alignment. Introductory text before the first section uses `opening`; avoid using that ID on a heading. A text without headings is treated as one section.
 
-A missing or invalid Tibetan source leaves the English translation readable and displays the failure. Source texts retain their own notes and links. English headings remain the navigation outline in either language. Search includes both languages and reveals the language of the selected result.
+A missing or invalid Tibetan source leaves the English translation readable and displays the failure. Source texts retain their own notes and links. Endnotes for each language remain available whenever a section uses that language. English headings remain the navigation outline in either language. Search includes both languages and reveals the language of the selected result.
 
 ## Typography and export
 
