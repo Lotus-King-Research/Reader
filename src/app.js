@@ -1623,13 +1623,16 @@ $('focus-button').addEventListener('click',toggleFocus);
 function buildSearchIndex() {
   state.search=[]; let context=state.current.title; let index=0;
   $('manuscript').querySelectorAll('h1,h2,h3,h4,p,li,td,th,pre,dt,dd,figcaption').forEach(el=>{
-    if (/^H[1-4]$/.test(el.tagName)) context=navLabel(el.dataset.headingText || el.textContent.replace(/§$/,'').trim());
+    // Results are labelled in English: a source heading does not rename its passage.
+    if (/^H[1-4]$/.test(el.tagName) && !el.closest('.source-passage')) context=navLabel(el.dataset.headingText || el.textContent.replace(/§$/,'').trim());
     // Avoid duplicate hits for list items and paragraphs inside those items.
     if (el.tagName==='LI' && el.querySelector('p,li')) return;
-    const clone=el.cloneNode(true); clone.querySelectorAll('.section-link,.footnote-back,[data-reader-ui]').forEach(a=>a.remove());
-    const text=clone.textContent.replace(/\s+/g,' ').trim(); if (!text) return;
+    const clone=el.cloneNode(true); clone.querySelectorAll('.section-link,.footnote-back,.reader-note-marker,.footnote-ref,[data-reader-ui]').forEach(a=>a.remove());
+    clone.querySelectorAll('br').forEach(br=>br.replaceWith(' / '));
+    const text=clone.textContent.replace(/\s+/g,' ').replace(/^ \/ | \/ $/g,'').trim(); if (!text) return;
     if (!el.id) el.id='passage-'+(++index);
-    state.search.push({id:el.id,text,lower:searchForm(text),context});
+    const form=searchIndexForm(text);
+    state.search.push({id:el.id,text,lower:form.text,map:form.map,context,lang:el.closest('[lang]')?.lang || 'en'});
   });
   $('search-scope').textContent='In '+($('toolbar-volume').textContent || 'this text');
   $('search-input').value=''; renderSearch();
@@ -1642,22 +1645,60 @@ $('search-trigger').addEventListener('click',showSearch);
 let searchTimer;
 $('search-input').addEventListener('input',()=>{ clearTimeout(searchTimer); searchTimer=setTimeout(renderSearch,100); });
 // Same length as the input, so match offsets stay valid for highlighting.
-function searchForm(text) { return text.toLocaleLowerCase().replace(/[’‘]/g,"'"); }
+// One character's searchable form: case, Latin diacritics, curly apostrophes and the
+// Tibetan variants that are spelled more than one way (non-breaking tsheg, precomposed
+// letters and vowel signs) all fold together. Tsheg itself is never removed.
+const TIBETAN_FOLD={'\u0f0c':'\u0f0b','\u0f73':'\u0f71\u0f72','\u0f75':'\u0f71\u0f74','\u0f81':'\u0f71\u0f80'};
+function foldCharacter(c) {
+  if (TIBETAN_FOLD[c]) return TIBETAN_FOLD[c];
+  if (c==='’' || c==='‘') return "'";
+  return c.toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+function searchIndexForm(text) {
+  let out=''; const map=[];
+  for (let i=0; i<text.length;) {
+    const c=String.fromCodePoint(text.codePointAt(i)), folded=foldCharacter(c);
+    for (let k=0; k<folded.length; k++) map.push(i);
+    out+=folded; i+=c.length;
+  }
+  map.push(text.length);
+  return {text:out,map};
+}
+function searchForm(text) {
+  const folded=searchIndexForm(text).text;
+  // A typed syllable may end in a tsheg or shad that the passage spells differently.
+  const trimmed=/[\u0f00-\u0fff]/.test(folded) ? folded.replace(/[\u0f0b\u0f0d\u0f0e\u0f11\u0f14\s]+$/,'') : folded;
+  return trimmed || folded;
+}
+const SEARCH_PAGE=60;
+function searchResult(item,query) {
+  const at=item.lower.indexOf(query), from=item.map[at], to=item.map[at+query.length];
+  const start=Math.max(0,from-55), end=Math.min(item.text.length,to+115);
+  const li=document.createElement('li'), button=document.createElement('button');
+  button.append(textElement('span',item.context,'result-section'));
+  const excerpt=document.createElement('span'); excerpt.className='result-excerpt'; excerpt.lang=item.lang;
+  excerpt.append(document.createTextNode((start?'…':'')+item.text.slice(start,from)),textElement('mark',item.text.slice(from,to)),document.createTextNode(item.text.slice(to,end)+(end<item.text.length?'…':'')));
+  button.append(excerpt); button.addEventListener('click',()=>{ closeDialog('search-dialog'); jumpTo(item.id,{flash:true}); }); li.append(button);
+  return li;
+}
 function renderSearch() {
   const query=searchForm($('search-input').value.trim()); $('search-results').replaceChildren();
   if (!query) { $('search-empty').hidden=false; $('search-empty').textContent='Search this text in English or Tibetan.'; $('search-count').textContent='Type to search'; return; }
   const matches=state.search.filter(item=>item.lower.includes(query));
-  $('search-count').textContent=`${matches.length} passage${matches.length===1?'':'s'}${matches.length>60?' · first 60 shown':''}`;
+  $('search-count').textContent=`${matches.length.toLocaleString('en')} passage${matches.length===1?'':'s'}`;
   $('search-empty').hidden=!!matches.length;
   if (!matches.length) $('search-empty').textContent='No matching passages. Try a shorter word or a Tibetan syllable.';
-  for (const item of matches.slice(0,60)) {
-    const at=item.lower.indexOf(query), start=Math.max(0,at-55), end=Math.min(item.text.length,at+query.length+115);
-    const li=document.createElement('li'), button=document.createElement('button');
-    button.append(textElement('span',item.context,'result-section'));
-    const excerpt=document.createElement('span'); excerpt.className='result-excerpt';
-    excerpt.append(document.createTextNode((start?'…':'')+item.text.slice(start,at)),textElement('mark',item.text.slice(at,at+query.length)),document.createTextNode(item.text.slice(at+query.length,end)+(end<item.text.length?'…':'')));
-    button.append(excerpt); button.addEventListener('click',()=>{ closeDialog('search-dialog'); jumpTo(item.id,{flash:true}); }); li.append(button); $('search-results').append(li);
-  }
+  let shown=0;
+  const more=()=>{
+    $('search-results').querySelector('.search-more')?.remove();
+    const page=matches.slice(shown,shown+SEARCH_PAGE); shown+=page.length;
+    const first=searchResult(page[0],query); $('search-results').append(first,...page.slice(1).map(item=>searchResult(item,query)));
+    if (shown<matches.length) {
+      const li=document.createElement('li'), button=textElement('button',`Show ${Math.min(SEARCH_PAGE,matches.length-shown)} more of ${(matches.length-shown).toLocaleString('en')}`,'search-more-button');
+      li.className='search-more'; button.type='button'; button.addEventListener('click',()=>{ const next=shown; more(); $('search-results').children[next]?.querySelector('button')?.focus(); }); li.append(button); $('search-results').append(li);
+    }
+  };
+  if (matches.length) more();
 }
 $('search-input').addEventListener('keydown',e=>{
   if (e.key==='ArrowDown') { e.preventDefault(); $('search-results').querySelector('button')?.focus(); }
