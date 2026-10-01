@@ -15,10 +15,10 @@ const serialized=JSON.stringify(config,null,2).replace(/</g,'\\u003c').replace(/
 const configSlot=/(<script id="reader-config" type="application\/json">)[\s\S]*?(<\/script>)/;
 if(!configSlot.test(html))throw new Error('Missing reader-config JSON slot in public/index.html.');
 html=html.replace(configSlot,(_,open,close)=>open+'\n'+serialized+'\n'+close);
-const font=await readFile(new URL('public/fonts/NotoSansTibetan-Regular.ttf',root));
+const font=await readFile(new URL('public/fonts/NotoSerifTibetan-Regular.woff2',root));
 const fontSlot=/\/\* TIBETAN_FONT \*\/(?:[\s\S]*?\/\* END_TIBETAN_FONT \*\/)?/;
 if(!fontSlot.test(html))throw new Error('Missing Tibetan font CSS slot in public/index.html.');
-const fontCSS=`/* TIBETAN_FONT */\n@font-face { font-family: 'Noto Sans Tibetan'; font-style: normal; font-weight: 400; font-display: swap; src: url(data:font/ttf;base64,${font.toString('base64')}) format('truetype'); }\n/* END_TIBETAN_FONT */`;
+const fontCSS=`/* TIBETAN_FONT */\n@font-face { font-family: 'Noto Serif Tibetan'; font-style: normal; font-weight: 400; font-display: swap; src: url(data:font/woff2;base64,${font.toString('base64')}) format('woff2'); }\n/* END_TIBETAN_FONT */`;
 html=html.replace(fontSlot,()=>fontCSS);
 await writeFile(path,html);
 console.log('Built public/index.html with reader config, bilingual catalog, EPUB export and Tibetan font.');

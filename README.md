@@ -55,7 +55,7 @@ A missing or invalid Tibetan source leaves the English translation readable and 
 
 ## Typography and export
 
-Noto Sans Tibetan Regular is bundled and embedded into the standalone HTML, including offline exports. It is the requested Noto **Sans** Tibetan font from the official Noto archive, not a substituted Serif font. The SIL Open Font License and provenance are in `public/fonts/`.
+Noto Serif Tibetan Regular 2.103 is bundled and embedded into the standalone HTML, including offline exports. It is the current release of the design previously bundled as Noto Sans Tibetan 1.01, whose shaping drew a dotted circle inside Sanskrit stacks such as the title of Dra Thal Gyur. It is subset to the Tibetan block and compressed as WOFF2. The SIL Open Font License, provenance and the exact subsetting command are in `public/fonts/`.
 
 Local Markdown files and pasted texts stay on the device. **Manuscript & source** provides Markdown download, offline HTML, EPUB, and printing. An offline HTML copy includes both loaded manuscripts and the font; section switches work without network access. EPUB includes the currently visible language of each section, with language tags and relevant endnotes regardless of the on-screen notes toggle. Its font choice depends on the reading device; the Tibetan font is not embedded in EPUB. No translation is generated or corrected. The typography specimen is synthetic interface documentation.
 
