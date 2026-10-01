@@ -1,0 +1,27 @@
+{
+  "name": "Reader",
+  "short_name": "Reader",
+  "description": "Wisdom texts in English and in their Tibetan sources, read passage by passage and checked against their published revisions.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f1e8",
+  "theme_color": "#f5f1e8",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
+}

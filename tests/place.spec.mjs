@@ -4,7 +4,8 @@ import {URL_PATH, setup, opened, frames, readAt, topOf, id} from './place-fixtur
 test('reopening a text returns to the passage where reading stopped', async ({page}) => {
   await setup(page); await page.goto(URL_PATH); await opened(page);
   await readAt(page, 61);
-  await page.reload(); await opened(page);
+  // Reopen the plain address: a reload would keep the hash that follows reading.
+  await page.goto('about:blank'); await page.goto(URL_PATH); await opened(page);
   await expect(page.locator('#toast-text')).toHaveText('Back at Chapter 4.');
   await expect.poll(async () => Math.abs(await topOf(page, 61) - 95)).toBeLessThan(30);
   await page.locator('#toast-action').click();

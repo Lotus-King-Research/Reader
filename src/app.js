@@ -927,6 +927,8 @@ function workIdentity(entry) {
     author: pick(m.author), translator: pick(m.translator), edition: pick(m['paired-edition'],m.edition,m['translation-edition'],m.source_edition,m.base_edition)
   };
 }
+const SITE_DESCRIPTION=document.querySelector('meta[name="description"]')?.content || '';
+function setDescription(text) { const meta=document.querySelector('meta[name="description"]'); if (meta) meta.content=text || SITE_DESCRIPTION; }
 function readingLabel(entry) { return entry.kind==='embedded' && entry.readingTitle ? entry.readingTitle : entry.kind==='catalog' && catalog.get(entry.catalogId).english.kind==='file' ? entry.workTitle : entry.kind==='catalog' ? entry.workTitle+' · '+fileLabel(entry.path) : entry.title; }
 function renderWorkIdentity(entry, titleNode = null) {
   const identity = workIdentity(entry), specimen = entry.kind === 'specimen', title = entry.title || 'Untitled text';
@@ -974,7 +976,7 @@ function showCollection(options = {}) {
   $('load-message').hidden = true; $('toast').hidden = true;
   setView('collection'); state.headings = []; state.activeHeading = null;
   $('toolbar-room').textContent = 'Reader'; $('toolbar-volume').textContent = 'Collection'; $('toolbar-volume').removeAttribute('title');
-  document.title = 'Reader · Collection'; renderCollection();
+  document.title = 'Reader · Collection'; setDescription(''); renderCollection();
   if (catalogActive) refreshOpenWorks();
   if (options.updateURL !== false) updateLocation(null, '', false, 'collection');
   window.scrollTo({top: 0, behavior: 'instant'});
@@ -1277,6 +1279,7 @@ async function loadDocument(descriptor, options = {}) {
 
     $('end-caption').textContent=candidate.kind === 'specimen' ? 'End of the typography specimen. Open your own text to read.' : `End of ${shortTitle}.`;
     document.title=shortTitle+' · '+CONFIG.title;
+    setDescription(candidate.kind==='catalog' ? [readingLabel(candidate),catalog.get(candidate.catalogId)?.description].filter(Boolean).join('. ') : '');
     buildOutline(); buildSearchIndex(); updateBookmarkUI(); renderLibrary();
     loadingProgress(100,'Ready to read');setBusy(false);$('manuscript').classList.remove('reader-arriving');void $('manuscript').offsetWidth;$('manuscript').classList.add('reader-arriving');closeNav(false); $('load-message').hidden=true; syncRevisionNotice(); syncNextJuan();
     const position = storageRead('position:'+candidate.id);

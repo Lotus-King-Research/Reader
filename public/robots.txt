@@ -1,0 +1,2 @@
+# Crawl policy is set at the Cloudflare zone; this file only points to the sitemap.
+Sitemap: https://reader.padma.io/sitemap.xml

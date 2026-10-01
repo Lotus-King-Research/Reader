@@ -21,4 +21,9 @@ if(!fontSlot.test(html))throw new Error('Missing Tibetan font CSS slot in public
 const fontCSS=`/* TIBETAN_FONT */\n@font-face { font-family: 'Noto Serif Tibetan'; font-style: normal; font-weight: 400; font-display: swap; src: url(data:font/woff2;base64,${font.toString('base64')}) format('woff2'); }\n/* END_TIBETAN_FONT */`;
 html=html.replace(fontSlot,()=>fontCSS);
 await writeFile(path,html);
-console.log('Built public/index.html with reader config, bilingual catalog, EPUB export and Tibetan font.');
+// The sitemap lists the collection and each configured work, from the same configuration.
+const origin=(process.env.READER_ORIGIN || 'https://reader.padma.io').replace(/\/+$/,'');
+const xml=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const urls=[origin+'/',...config.works.filter(work=>typeof work.id==='string' && /^[a-zA-Z0-9._-]+$/.test(work.id)).map(work=>`${origin}/?work=${encodeURIComponent(work.id)}`)];
+await writeFile(new URL('public/sitemap.xml',root),`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(url=>`  <url><loc>${xml(url)}</loc></url>`).join('\n')}\n</urlset>\n`);
+console.log('Built public/index.html with reader config, bilingual catalog, EPUB export and Tibetan font, and public/sitemap.xml.');

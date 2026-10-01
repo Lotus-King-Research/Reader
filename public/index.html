@@ -6,8 +6,19 @@
 <meta name="theme-color" content="#f5f1e8" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#202824" media="(prefers-color-scheme: dark)">
 <script>/* A chosen palette applies before the first paint; otherwise the system decides. */try{var s=JSON.parse(localStorage.getItem("padma-reader:v1:settings")||"null");if(s&&/^(paper|mist|ink)$/.test(s.theme))document.documentElement.dataset.theme=s.theme}catch(e){}</script>
-<meta name="description" content="Reader — a quiet, citation-aware Markdown reading room. Read privately, and export offline HTML or EPUB books.">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; style-src 'unsafe-inline'; font-src 'self' data:; img-src https: http: blob:; connect-src https: http:; base-uri 'none'; object-src 'none'; form-action 'none'">
+<meta name="description" content="Wisdom texts in English and in their Tibetan sources, read passage by passage and checked against their published revisions.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Reader">
+<meta property="og:title" content="Reader">
+<meta property="og:description" content="Wisdom texts in English and in their Tibetan sources, read passage by passage and checked against their published revisions.">
+<meta property="og:image" content="https://reader.padma.io/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; style-src 'unsafe-inline'; font-src 'self' data:; img-src https: http: blob:; connect-src https: http:; base-uri 'none'; object-src 'none'; form-action 'none'; manifest-src 'self'">
 <title>Reader · Collection</title>
 <style>
 /* Tibetan font is bundled under the SIL Open Font License. */
@@ -5196,6 +5207,8 @@ function workIdentity(entry) {
     author: pick(m.author), translator: pick(m.translator), edition: pick(m['paired-edition'],m.edition,m['translation-edition'],m.source_edition,m.base_edition)
   };
 }
+const SITE_DESCRIPTION=document.querySelector('meta[name="description"]')?.content || '';
+function setDescription(text) { const meta=document.querySelector('meta[name="description"]'); if (meta) meta.content=text || SITE_DESCRIPTION; }
 function readingLabel(entry) { return entry.kind==='embedded' && entry.readingTitle ? entry.readingTitle : entry.kind==='catalog' && catalog.get(entry.catalogId).english.kind==='file' ? entry.workTitle : entry.kind==='catalog' ? entry.workTitle+' · '+fileLabel(entry.path) : entry.title; }
 function renderWorkIdentity(entry, titleNode = null) {
   const identity = workIdentity(entry), specimen = entry.kind === 'specimen', title = entry.title || 'Untitled text';
@@ -5243,7 +5256,7 @@ function showCollection(options = {}) {
   $('load-message').hidden = true; $('toast').hidden = true;
   setView('collection'); state.headings = []; state.activeHeading = null;
   $('toolbar-room').textContent = 'Reader'; $('toolbar-volume').textContent = 'Collection'; $('toolbar-volume').removeAttribute('title');
-  document.title = 'Reader · Collection'; renderCollection();
+  document.title = 'Reader · Collection'; setDescription(''); renderCollection();
   if (catalogActive) refreshOpenWorks();
   if (options.updateURL !== false) updateLocation(null, '', false, 'collection');
   window.scrollTo({top: 0, behavior: 'instant'});
@@ -5546,6 +5559,7 @@ async function loadDocument(descriptor, options = {}) {
 
     $('end-caption').textContent=candidate.kind === 'specimen' ? 'End of the typography specimen. Open your own text to read.' : `End of ${shortTitle}.`;
     document.title=shortTitle+' · '+CONFIG.title;
+    setDescription(candidate.kind==='catalog' ? [readingLabel(candidate),catalog.get(candidate.catalogId)?.description].filter(Boolean).join('. ') : '');
     buildOutline(); buildSearchIndex(); updateBookmarkUI(); renderLibrary();
     loadingProgress(100,'Ready to read');setBusy(false);$('manuscript').classList.remove('reader-arriving');void $('manuscript').offsetWidth;$('manuscript').classList.add('reader-arriving');closeNav(false); $('load-message').hidden=true; syncRevisionNotice(); syncNextJuan();
     const position = storageRead('position:'+candidate.id);

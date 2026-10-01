@@ -6,7 +6,7 @@ An English–Tibetan reader built from [Lukija](https://github.com/mikkokotila/L
 
 ## Publish a text
 
-On a feature branch, edit `public/reader-config.json`, add a work, and run `npm run build`. Open a pull request; merging it after validation publishes the work automatically. The first published work is [Dra Thal Gyur](https://github.com/Lotus-King-Translation/Dra-Thal-Gyur), using its paired Tibetan source and English translation.
+On a feature branch, edit `public/reader-config.json`, add a work, and run `npm run build`; the build also writes `public/sitemap.xml` from the configured works (`robots.txt` only points to it, since crawl policy is set at the Cloudflare zone). Open a pull request; merging it after validation publishes the work automatically. The first published work is [Dra Thal Gyur](https://github.com/Lotus-King-Translation/Dra-Thal-Gyur), using its paired Tibetan source and English translation.
 
 ```json
 {
