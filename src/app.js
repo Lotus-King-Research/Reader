@@ -97,6 +97,8 @@ function openNav() {
   document.body.classList.add('nav-open'); $('mobile-menu').setAttribute('aria-expanded', 'true');
   if (innerWidth <= 920) { $('sidebar').setAttribute('role', 'dialog'); $('sidebar').setAttribute('aria-modal', 'true'); }
   syncSidebarAccess(); $('close-nav').focus({preventScroll:true});
+  // The contents open at the reader's place.
+  requestAnimationFrame(()=>revealTocEntry($('toc').querySelector('a[aria-current="location"]'),true));
 }
 function closeNav(returnFocus = true) {
   const wasOpen = document.body.classList.contains('nav-open');
@@ -1411,15 +1413,60 @@ function buildOutline() {
 function renderOutline() {
   $('toc').replaceChildren(); $('toc-count').textContent=String(state.headings.filter(h=>h.level<=2).length).padStart(2,'0');
   if (!state.headings.length) { $('toc').append(textElement('li','This text has no section headings. Read from the beginning.','toc-empty')); return; }
-  state.headings.forEach(heading=>{
+  // With several chapters, each chapter holds its sections and only the one being read is open.
+  const nested=state.headings.filter(h=>h.level<=2).length>1 && state.headings.some(h=>h.level===3);
+  let group=null;
+  state.headingIndex=new Map(state.headings.map((heading,index)=>[heading.id,index]));
+  state.headings.forEach((heading,index)=>{
     const li=document.createElement('li'), a=document.createElement('a');
-    if (heading.level===3) li.className='sub';
     a.href='#'+heading.id; a.dataset.target=heading.id;
     a.append(textElement('span',heading.text));
     a.addEventListener('click',e=>{ e.preventDefault(); closeNav(false); jumpTo(heading.id,{history:'replace'}); });
-    li.append(a); $('toc').append(li);
+    li.append(a);
+    if (nested && heading.level<=2) { li.className='toc-chapter'; group={li,text:heading.text,list:null,index}; $('toc').append(li); return; }
+    if (heading.level===3) li.className='sub';
+    if (nested && group) {
+      if (!group.list) {
+        const list=document.createElement('ol'), toggle=document.createElement('button');
+        list.className='toc-sections'; list.id='toc-sections-'+group.index; list.hidden=true;
+        toggle.type='button'; toggle.className='toc-toggle'; toggle.setAttribute('aria-expanded','false'); toggle.setAttribute('aria-controls',list.id);
+        toggle.setAttribute('aria-label','Sections of '+group.text); toggle.append(icon('arrow'));
+        const owner=group.li; toggle.addEventListener('click',()=>setTocGroup(owner,toggle.getAttribute('aria-expanded')!=='true',true));
+        group.li.append(toggle,list); group.list=list;
+      }
+      group.list.append(li); return;
+    }
+    $('toc').append(li);
   });
   state.activeHeading=null; updateProgress();
+}
+function setTocGroup(li,open,byReader=false) {
+  const list=li.querySelector(':scope > .toc-sections'), toggle=li.querySelector(':scope > .toc-toggle'); if (!list) return;
+  list.hidden=!open; toggle.setAttribute('aria-expanded',String(open)); li.classList.toggle('open',open);
+  if (byReader) li.dataset.reader=open ? 'open' : 'closed'; else delete li.dataset.reader;
+}
+function sidebarShown() { return innerWidth>920 ? !document.body.classList.contains('focus-mode') : document.body.classList.contains('nav-open'); }
+// Keeps the current entry in view inside the contents, without moving the page.
+function revealTocEntry(link,center=false) {
+  const wrap=$('toc').closest('.toc-wrap'); if (!link || !wrap || !sidebarShown()) return;
+  const box=wrap.getBoundingClientRect(), at=link.getBoundingClientRect();
+  if (!center && at.top>=box.top+24 && at.bottom<=box.bottom-24) return;
+  wrap.scrollTop+=at.top-box.top-(center ? (wrap.clientHeight-at.height)/2 : wrap.clientHeight/3);
+}
+function followInContents(activeId) {
+  const link=$('toc').querySelector(`a[data-target="${CSS.escape(activeId || '')}"]`);
+  const chapter=link?.closest('.toc-chapter');
+  $('toc').querySelectorAll('.toc-chapter').forEach(li=>{ if (li!==chapter && li.dataset.reader!=='open') setTocGroup(li,false); });
+  if (chapter && chapter.dataset.reader!=='closed') setTocGroup(chapter,true);
+  revealTocEntry(link);
+}
+function formatMinutes(minutes) { return minutes>=60 ? `${Math.floor(minutes/60)} h ${minutes%60} min` : `${minutes} min`; }
+// The chapter around a heading, as indexes into the outline.
+function chapterOf(index) {
+  let start=index; while (start>0 && state.headings[start].level>2) start--;
+  if (state.headings[start]?.level>2) return null;
+  let end=start+1; while (end<state.headings.length && state.headings[end].level>2) end++;
+  return {start,end};
 }
 function jumpTo(id, options={}) {
   const el=$(id); if (!el) return false;
@@ -1575,13 +1622,25 @@ function updateProgress() {
   const percent=Math.round(state.progress*100);
   $('progress-fill').style.transform=`scaleX(${state.progress})`;
   if (state.progressPercent!==percent) { state.progressPercent=percent; $('progress-label').textContent=percent+'%'; $('progress-track').setAttribute('aria-valuenow',String(percent)); }
-  const active=activeLocation();
+  const active=activeLocation(), index=active ? state.headingIndex?.get(active.id) : undefined;
+  const chapter=index!==undefined && state.headings.filter(h=>h.level<=2).length>1 ? chapterOf(index) : null;
   if (state.activeHeading!==active?.id) {
     state.activeHeading=active?.id;
     $('toc').querySelectorAll('a').forEach(a=>{ if (a.dataset.target===active?.id) a.setAttribute('aria-current','location'); else a.removeAttribute('aria-current'); });
-    $('footer-section').textContent=active?.text || state.current?.title || '';
+    const title=chapter ? state.headings[chapter.start].text : '';
+    $('footer-section').textContent=chapter && chapter.start!==index ? title+' · '+active.text : active?.text || state.current?.title || '';
+    followInContents(active?.id);
   }
-  const remaining=state.current ? percent>=99 ? 'End of the text' : `About ${Math.max(1,Math.ceil(state.minutes*(1-state.progress)))} min left` : 'Make yourself at home';
+  let remaining=state.current ? percent>=99 ? 'End of the text' : `About ${formatMinutes(Math.max(1,Math.ceil(state.minutes*(1-state.progress))))} left` : 'Make yourself at home';
+  if (chapter && percent<99) {
+    // Time left in this chapter, estimated from its share of the page.
+    const first=$(state.headings[chapter.start].id), next=chapter.end<state.headings.length ? $(state.headings[chapter.end].id) : null, book=$('manuscript').getBoundingClientRect();
+    if (first && book.height>0) {
+      const top=first.getBoundingClientRect().top, bottom=next ? next.getBoundingClientRect().top : book.bottom, span=Math.max(1,bottom-top);
+      const read=Math.max(0,Math.min(1,(READING_LINE-top)/span)), minutes=state.minutes*span/book.height;
+      remaining=`${formatMinutes(Math.max(1,Math.ceil(minutes*(1-read))))} left in chapter · ${formatMinutes(Math.max(1,Math.ceil(state.minutes*(1-state.progress))))} in text`;
+    }
+  }
   if ($('remaining').textContent!==remaining) $('remaining').textContent=remaining;
 }
 window.addEventListener('scroll',()=>{ if (!scrollQueued) { scrollQueued=true; requestAnimationFrame(()=>{ if (!state.restoring && !state.busy && window.scrollY>1) state.hasMoved=true; if (!state.restoring && !document.body.classList.contains('dialog-open')) { state.place=placeAtReadingLine() || state.place; clearTimeout(hashTimer); hashTimer=setTimeout(syncHash,500); } updateProgress(); savePosition(); scrollQueued=false; }); } },{passive:true});
