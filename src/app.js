@@ -1687,7 +1687,25 @@ function syncFocus() {
   const active=document.body.classList.contains('focus-mode');
   syncSidebarAccess(); $('focus-button').setAttribute('aria-pressed',String(active));
 }
-function toggleFocus() { if (state.view !== 'reading') return; closeNav(false); document.body.classList.toggle('focus-mode'); syncFocus(); }
+function toggleFocus() {
+  if (state.view !== 'reading') return; closeNav(false);
+  const on=document.body.classList.toggle('focus-mode'); showChrome(false); syncFocus();
+  if (on) notify(matchMedia('(hover: none)').matches ? 'Focus mode. Scroll up for the toolbar.' : 'Focus mode. Point at the top edge for the toolbar; Escape leaves.','',null,4000);
+}
+let chromeTimer=0, chromeScroll=0;
+function showChrome(on) { clearTimeout(chromeTimer); document.body.classList.toggle('chrome-shown',!!on && document.body.classList.contains('focus-mode')); }
+document.addEventListener('mousemove',e=>{
+  if (!document.body.classList.contains('focus-mode')) return;
+  if (e.clientY<64) showChrome(true);
+  else if (document.body.classList.contains('chrome-shown') && e.clientY>120) { clearTimeout(chromeTimer); chromeTimer=setTimeout(()=>showChrome(false),700); }
+},{passive:true});
+// On touch screens, scrolling back up is the way to ask for the toolbar.
+window.addEventListener('scroll',()=>{
+  if (!document.body.classList.contains('focus-mode')) { chromeScroll=window.scrollY; return; }
+  const y=window.scrollY;
+  if (y<chromeScroll-40) { showChrome(true); chromeScroll=y; }
+  else if (y>chromeScroll+12) { if (!document.querySelector('.toolbar').contains(document.activeElement)) showChrome(false); chromeScroll=y; }
+},{passive:true});
 $('focus-button').addEventListener('click',toggleFocus);
 
 function buildSearchIndex() {
@@ -2187,7 +2205,7 @@ document.addEventListener('keydown',e=>{
     if ($('settings-dialog').open && !isModal($('settings-dialog'))) {closeSettings();return;}
     if (document.querySelector('dialog[open]')) return;
     if (document.body.classList.contains('nav-open')) {e.preventDefault();closeNav();return;}
-    if (document.body.classList.contains('focus-mode')) {document.body.classList.remove('focus-mode');syncFocus();}
+    if (document.body.classList.contains('focus-mode')) {document.body.classList.remove('focus-mode');showChrome(false);syncFocus();}
     return;
   }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase()==='k') {e.preventDefault();showSearch();return;}
