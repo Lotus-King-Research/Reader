@@ -58,7 +58,8 @@ h2 { font-size: 1.5em; margin: 2em 0 1em; }
 h3 { font-size: 1.2em; margin: 1.5em 0 .7em; }
 p { margin: 0 0 1em; orphans: 3; widows: 3; }
 a { text-decoration: underline; }
-[lang|="zh"], .source-text { font-family: "Songti SC", "Songti TC", "Noto Serif CJK TC", "Noto Serif CJK SC", "PMingLiU", serif; line-height: 1.9; }
+[lang|="zh"] { font-family: "Songti SC", "Songti TC", "Noto Serif CJK TC", "Noto Serif CJK SC", "PMingLiU", serif; line-height: 1.9; }
+[lang|="bo"] { font-family: "Noto Sans Tibetan", sans-serif; line-height: 2; }
 blockquote { margin: 1.3em 0 1.3em 1em; padding: .3em 0 .3em 1em; border-left: 2px solid #9e3c2c; }
 figure.citation-block { margin: 1.7em 0 1.7em .6em; padding: .4em 0 .4em 1em; border-left: 2px solid #9e3c2c; }
 .citation-attribution { margin-bottom: .8em; page-break-after: avoid; break-after: avoid; }
@@ -94,7 +95,7 @@ nav ol { padding-left: 1.3em; } nav li { margin: .6em 0; }
     // A document without a browsing context cannot load cloned image URLs.
     const inert = document.implementation.createHTMLDocument('');
     const body = inert.importNode(root, true);
-    body.querySelectorAll('.section-link, [data-reader-ui]:not(.citation-label), script, style, button, iframe, object, embed, link, meta').forEach(el => el.remove());
+    body.querySelectorAll('.section-link, [data-reader-ui]:not(.citation-label), [hidden], script, style, button, iframe, object, embed, link, meta').forEach(el => el.remove());
     // Search highlights and scrolling containers are screen furniture, not book content.
     body.querySelectorAll('.table-scroll').forEach(el => el.replaceWith(...el.childNodes));
     body.querySelectorAll('details').forEach(el => {
@@ -198,7 +199,7 @@ nav ol { padding-left: 1.3em; } nav li { margin: .6em 0; }
     const esc = escapeXML;
     const notice = specimen ? '<p class="export-notice">Typography specimen only. This is not a translation of the source work.</p>' : '';
     const images = content.imageCount ? `<p class="export-notice">${content.imageCount} image${content.imageCount === 1 ? ' is' : 's are'} represented by descriptive links. Linked images are not embedded and require an internet connection.</p>` : '';
-    const titlepage = xhtml(title, language, `<section epub:type="titlepage" class="titlepage"><p class="edition">Lukija · Reading edition</p><h1>${esc(title)}</h1>${author ? `<p>${esc(author)}</p>` : ''}${notice}${images}<p><a href="nav.xhtml">Contents</a></p>${source ? `<p class="export-notice"><a href="${esc(source)}">Manuscript source</a></p>` : ''}</section>`);
+    const titlepage = xhtml(title, language, `<section epub:type="titlepage" class="titlepage"><p class="edition">Reader · Reading edition</p><h1>${esc(title)}</h1>${author ? `<p>${esc(author)}</p>` : ''}${notice}${images}<p><a href="nav.xhtml">Contents</a></p>${source ? `<p class="export-notice"><a href="${esc(source)}">Manuscript source</a></p>` : ''}</section>`);
     const navigation = xhtml('Contents · ' + title, language, `<nav epub:type="toc" id="toc" role="doc-toc"><h1>Contents</h1>${headings.length ? navList(headings) : '<ol><li><a href="content.xhtml">' + esc(title) + '</a></li></ol>'}</nav><nav epub:type="landmarks" hidden="hidden"><h2>Guide</h2><ol><li><a epub:type="titlepage" href="title.xhtml">Title page</a></li><li><a epub:type="bodymatter" href="content.xhtml">Start reading</a></li></ol></nav>`);
     const points = headings.length ? headings : [{text: title, id: ''}];
     const ncx = `<?xml version="1.0" encoding="UTF-8"?>\n<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1" xml:lang="${esc(language)}"><head><meta name="dtb:uid" content="${esc(identifier)}"/><meta name="dtb:depth" content="1"/><meta name="dtb:totalPageCount" content="0"/><meta name="dtb:maxPageNumber" content="0"/></head><docTitle><text>${esc(title)}</text></docTitle><navMap>${points.map((h,i) => `<navPoint id="nav-${i+1}" playOrder="${i+1}"><navLabel><text>${esc(h.text)}</text></navLabel><content src="content.xhtml${h.id ? '#' + esc(h.id) : ''}"/></navPoint>`).join('')}</navMap></ncx>`;

@@ -1,67 +1,74 @@
-# Lukija
+# Reader
 
-**[Open the live reader](https://reader.nektari.fi)** · [Reader checks](https://github.com/mikkokotila/Lukija/actions/workflows/ci.yml)
+[Open the reader](https://reader.padma.io) · [Browser checks](https://github.com/Lotus-King-Research/Reader/actions/workflows/ci.yml)
 
-A quiet reading room for Chinese metaphysical works and their translations, without a default book identity. Paper, ink, restrained vermilion, generous typography, and a clear distinction between the root text and the voices it cites.
+An English–Tibetan reading room built from [Lukija](https://github.com/mikkokotila/Lukija), with its history preserved. Published manuscripts stay in their source repositories. The reader loads a configured English translation and Tibetan source together; each section has its own language switch. Use the section button, the toolbar, or **T**. Other sections retain their language.
 
-**The reader is a self-contained HTML file.** Runtime reading, local imports, citation formatting, offline HTML export, and EPUB export require no server-side code, external scripts, external fonts, or installation.
+## Publish a text
 
-## Read
+Edit `public/reader-config.json`, add a work, run `npm run build`, and deploy. The initial catalogue is empty until publication URLs are supplied.
 
-Open `public/index.html` in a browser, or use the deployed site. Choose **Open Markdown**, select one or more `.md` files, or paste Markdown through the library. Public Markdown URLs can also be opened. Use **Explore the typography** for a clearly labelled interface specimen, not a source translation.
-
-Local files are read on your device, not uploaded. The public reader bundles no translation snapshots or credentials. It discovers the two configured public translation repositories on startup; full manuscript text is downloaded only when selected.
-
-## Collection and reading rooms
-
-**Lukija** is the permanent application identity. The **Collection** is its neutral home; **Reading room** is the current work. Returning home keeps the current work available in memory, including its position. Browser Back and Forward work within the session. Reloading does not restore imported manuscripts.
-
-**Open in this session** contains temporary local files and opened links. **The collection** is a separate shelf for intentionally published works, starting with Yuzuan Zhouyi Zhezhong and Sanming Tonghui. No text-saving service or catalogue database is added.
-
-Each manuscript supplies its heading. Optional flat frontmatter adds work-level identity without rewriting the text:
-
-```yaml
----
-work_title: Example work
-chinese_title: 天地之理
-author: Example author
-translator: Example translator
-edition: Study edition
----
+```json
+{
+  "works": [
+    {
+      "id": "example-text",
+      "repository": "Lotus-King-Research/Example-Text",
+      "title": "Example text",
+      "originalTitle": "དཔེ་ཆ།",
+      "englishUrl": "https://github.com/Lotus-King-Research/Example-Text/blob/main/translation/en.md",
+      "sourceUrl": "https://github.com/Lotus-King-Research/Example-Text/blob/main/source/bo.md",
+      "sourceLanguage": "bo"
+    }
+  ]
+}
 ```
 
-The first H1 remains the displayed manuscript title; otherwise the reader uses `title` frontmatter or the filename. `work_title` identifies the parent work for a volume. Chinese titles and credits are shown only when supplied, except that a Chinese-only heading can also supply the Chinese title. Missing fields never inherit another work's branding. Metadata is displayed as text, not HTML.
+The repository name and two URLs are required. Other fields are optional. Use public Markdown or UTF-8 text URLs; GitHub blob and raw URLs work. A pair of GitHub tree URLs supports a collection of nested files, matched by their relative filenames. Any `.md`, `.markdown`, or `.txt` filename works. Use distinct IDs when multiple entries use the same repository.
 
-## Live translations
+The collection can be searched by title, source title, or repository. Text bodies load only when selected. Public GitHub sources use revision verification, with update checks for the active work every five minutes while visible. The reader discovers work metadata on demand to avoid exhausting GitHub’s anonymous API quota. A newer revision requires **Load latest**; it never replaces a passage mid-read. Public URLs on other hosts require browser CORS access and have no GitHub revision guarantee. Private repositories require downloading the files and opening them locally; credentials are never embedded.
 
-The first two works discover their translated volumes directly from their public GitHub repositories. Each opening checks the latest file revision; background checks run every five minutes while visible. New volumes appear automatically. An open passage stays unchanged until a reader accepts the **Load latest** notice. No source changes, copied manuscripts, deployment secrets, or scheduled builds are required. See [Live collection](LIVE-COLLECTION.md) for the publication workflow, freshness guarantees, limitations, and stable book/volume links.
+## Align sections
 
-## Export an EPUB
+A leading H1 is the work title. Subsequent headings divide the manuscript into sections. The reader first matches identical heading IDs. If both outlines have the same number and heading levels, and stable IDs do not indicate reordered sections, it pairs them by order. The publisher must ensure the sections correspond. For differing outlines or ordering, provide explicit mappings:
 
-Open a manuscript, then choose **Manuscript & source → Export EPUB**. On a phone, first open the contents menu. Review the title, optional creator credit, and primary language, then choose **Download EPUB**.
+```json
+"sections": [
+  {"english": "opening", "source": "tibetan-opening"},
+  {"english": "conclusion", "source": "tibetan-conclusion"}
+]
+```
 
-The EPUB contains the **current manuscript only**, in its current citation-formatting state. It includes a title page, EPUB 3 navigation, an NCX compatibility table of contents, reflowable content, Chinese language annotations and ruby, tables, semantic endnotes, and backlinks for repeated note references. It does not include browser controls, bookmarks, search highlights, or other library volumes. Metadata is taken from simple `title`, `author`, and `language`/`lang` frontmatter where present and can be edited before download. Authors are not inferred.
+Give stable IDs to Markdown headings with HTML such as `<h2 id="opening">The opening</h2>`. Use the original ID in configuration (the reader also accepts its `md-` prefixed form). Explicit maps disable ordinal fallback. Unmatched sections stay English and identify the missing alignment. Introductory text before the first section uses `opening`; avoid using that ID on a heading. A text without headings is treated as one section.
 
-Export runs entirely in your browser and makes no network requests. Images are represented by descriptive online links rather than embedded; the export dialog and title page disclose this. Relative links to other locally imported manuscripts are retained as labelled text, because those manuscripts are not included. The ZIP uses uncompressed entries for a small, dependency-free implementation, so EPUBs can be larger than compressed equivalents.
+A missing or invalid Tibetan source leaves the English translation readable and displays the failure. Source texts retain their own notes and links. English headings remain the navigation outline in either language. Search includes both languages and reveals the language of the selected result.
 
-The book uses reader-adjustable text size and a separate, restrained EPUB stylesheet. Exact fonts, pagination, and footnote popup behavior depend on the reading application. EPUB conformance tests do not establish compatibility with every physical device. No fonts are bundled.
+## Typography and export
 
-**Save offline reading copy** remains available and produces a self-contained HTML file with the current Markdown embedded. That copy also retains EPUB export. Keep exported private manuscripts private when sharing either format.
+Noto Sans Tibetan Regular is bundled and embedded into the standalone HTML, including offline exports. It is the requested Noto **Sans** Tibetan font from the official Noto archive, not a substituted Serif font. The SIL Open Font License and provenance are in `public/fonts/`.
 
-## Local development
+Local Markdown files and pasted texts stay on the device. **Manuscript & source** provides Markdown download, offline HTML, EPUB, and printing. An offline HTML copy includes both loaded manuscripts and the font; section switches work without network access. EPUB includes the currently visible language of each section, with language tags. Its font choice depends on the reading device; the Tibetan font is not embedded in EPUB. No translation is generated or corrected. The typography specimen is synthetic interface documentation.
 
-Use Node.js 22 or later:
+Preferences, positions, and bookmarks use browser storage; manuscript bodies are never stored there. Markdown is sanitized before display. Files are limited to 4 MB each. No analytics or account flow is included.
+
+## Development
+
+Node.js 22 or later:
 
 ```sh
 npm ci
+npx playwright install chromium
 npm run dev
+npm test
 ```
 
-`public/index.html` is the reader source and standalone deliverable. `src/epub.js` and `src/catalog.js` are the EPUB and live-catalogue engines; `npm run build` embeds both into the HTML. Commit the source modules and built HTML together when changing either. There is no front-end framework or client-side package installation.
+`public/index.html` contains the application shell. `src/catalog.js`, `src/parallel.js`, and `src/epub.js` are embedded by `scripts/build.mjs`, together with configuration and the Tibetan font. Commit source modules and built HTML together. `npm run serve` provides the local test server.
 
-## Deploy to Cloudflare Workers
+Browser tests cover desktop and phone layouts, source verification, arbitrary filenames and nested collections, alignment, per-section toggling, failures, language tags, export, notes, and local imports. Test fixtures are synthetic. CI runs browser tests and validates the generated EPUBs using EPUBCheck 5.4.0. Locally, set `EPUBCHECK_JAR` and run `npm run test:epub` to perform the same EPUB validation.
 
-This project uses **Workers Static Assets**, with no Worker request handler and no database, storage binding, upload endpoint, or manuscript proxy. Only `public/` is deployed. The configured Worker name is `lukija`.
+## Cloudflare deployment
+
+The site uses [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/) with worker name `padma-reader` and custom domain `reader.padma.io`. Only `public/` is deployed.
 
 ```sh
 npm ci
@@ -69,59 +76,8 @@ npx wrangler login
 npm run deploy
 ```
 
-Wrangler prints the deployed `workers.dev` URL. Existing authentication can be reused. The project does not contain an account ID or API token. Security headers are defined in `public/_headers`. A custom 404 prevents missing Markdown files from masquerading as successful HTML responses.
+The configuration declares the [Worker custom domain](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/). Wrangler creates the domain binding and certificate in the account that owns `padma.io`. Use existing authorized authentication or a deployment token; no credential is committed.
 
-### Continuous deployment
+For continuous deployment, either connect this repository in Cloudflare Workers Builds (branch `main`, build `npm run build`, deploy `npx wrangler deploy`) or enable the included GitHub Actions deployment job. The latter requires repository secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and variable `CLOUDFLARE_DEPLOY_ENABLED=true`. Do not copy local OAuth credentials into GitHub. Tests must pass before deployment. The initial CLI deployment does not automatically establish a Git integration.
 
-Two supported choices; use one, not both:
-
-**Cloudflare's Git integration:** In the Worker's **Settings → Builds → Connect**, select `mikkokotila/Lukija`, production branch `main`, repository root `/`, build command `npm run build`, and deploy command `npx wrangler deploy`. Authorize the Cloudflare GitHub App for this repository. Connecting the repository is a separate account-level step from a successful CLI deployment.
-
-**The included GitHub Actions workflow:** Add repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Use a scoped Cloudflare deployment token for this account; do not copy a local OAuth session into GitHub. Set the repository variable `CLOUDFLARE_DEPLOY_ENABLED` to `true`. Pushes to `main` will then deploy **only after** browser tests and EPUBCheck pass. Pull requests run tests but never receive deployment credentials. Until the variable and secrets are set, the deploy job is intentionally skipped.
-
-### Cloudflare Pages alternative
-
-The same `public/` directory can be published with Pages. Connect the repository in Pages with framework **None**, build command `npm run build`, output directory `public`, and production branch `main`. No Pages Functions are needed. The Workers configuration is for Workers deployments, not a Pages Functions setup. There is no reason to provision both a Pages project and a Worker for the same site.
-
-## Test
-
-```sh
-npm ci
-npx playwright install chromium
-npm test
-```
-
-The Playwright suite exercises desktop and phone layouts, root/citation separation, unchanged Markdown, EPUB package structure, XML validity, metadata escaping, language tags, navigation destinations, repeated note backlinks, offline export, image disclosure, unsafe markup rejection, error recovery, filename limits, and offline HTML round trips.
-
-CI also validates every generated test EPUB with **EPUBCheck 5.4.0** and fails on warnings. To run it locally, install Java 11 or later, download the official EPUBCheck release, and set its JAR path:
-
-```sh
-EPUBCHECK_JAR=/path/to/epubcheck.jar npm run test:epub
-```
-
-Test manuscripts are synthetic. They are not excerpts copied from the translation repositories. Catalogue tests mock GitHub, including revisions, new volumes, stale CDN replies, and failures, without consuming live API quota. Test exports and reports are ignored by Git.
-
-## Manuscripts and configuration
-
-The `CONFIG` object has no default source repository, initial manuscript, or book identity. Keep `autoLoad` false for the neutral collection. The independent `WORKS` registry in `src/catalog.js` defines the live, multi-work catalogue; it does not use these legacy single-repository settings. Configure the optional public repository fields to enable **Refresh published collection**, which checks a same-site `reader-manifest.json` before repository discovery. This is the existing opt-in loader, not a text-storage service.
-
-`public/reader-manifest.example.json` is an example, not an active catalogue. Only publish a manifest when its files exist and are intended to be public. Anything deployed under `public/` can be public regardless of `.gitignore`.
-
-The legacy browser-storage prefix preserves existing preferences and bookmarks. Imported manuscripts are not written to browser storage. Work identity is derived independently for each manuscript.
-
-Explicit Markdown blockquotes (`>`) are always respected. Automatic citation formatting recognizes attributed quotations with matching quotation marks, while uncertain boundaries stay inline. See [CITATION-FORMATTING.md](CITATION-FORMATTING.md). Formatting changes the rendered view, not the Markdown.
-
-## Privacy and limitations
-
-Imported manuscript text stays in the browser session. Preferences, positions, and bookmarks use browser storage, not a server. No analytics code is included. Public URLs and linked images contact their stated sources; Cloudflare also necessarily receives requests for the hosted application. There is no GitHub authentication flow in the reader and no client-side token field.
-
-Markdown is rebuilt through a narrow DOM allowlist before display and export. Scriptable embeds, arbitrary styles, frames, forms, SVG/MathML, and unsafe URL schemes are dropped. Files are limited to 4 MB. This is not an unrestricted HTML renderer or a formal security audit.
-
-Marked 4.0.19 is embedded from the existing reader, with its MIT notice retained in the HTML. It is a fixed bundled dependency, not a claim to be the newest release. No license is assigned to the translation manuscripts by publishing this reader.
-
-## Reference documentation
-
-- [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/)
-- [Cloudflare Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/)
-- [EPUB 3.3 specification](https://www.w3.org/TR/epub-33/)
-- [Official EPUBCheck](https://www.w3.org/publishing/epubcheck/)
+Lukija's embedded Marked 4.0.19 parser retains its MIT notice. Publishing the reader assigns no license to source manuscripts.

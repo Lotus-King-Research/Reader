@@ -1,9 +1,9 @@
 {
-  "name": "lukija",
-  "version": "0.3.0",
+  "name": "padma-reader",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "A quiet, citation-aware Markdown reading room with offline HTML and EPUB export.",
+  "description": "A configurable English–Tibetan reader with section switching and offline export.",
   "engines": {
     "node": ">=22"
   },

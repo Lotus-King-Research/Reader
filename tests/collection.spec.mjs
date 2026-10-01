@@ -16,8 +16,8 @@ async function home(page) {
 }
 test.beforeEach(async ({page}) => { await mockCatalog(page); await page.goto('/'); });
 test('the collection keeps generic branding and exposes two public works', async ({page}) => {
-  await expect(page).toHaveTitle('Lukija · A quiet reading room');
-  await expect(page.locator('.identity-title')).toHaveText('Lukija');
+  await expect(page).toHaveTitle('Reader · A quiet reading room');
+  await expect(page.locator('.identity-title')).toHaveText('Reader');
   await expect(page.locator('#published-work-list button')).toHaveCount(2);
   await expect(page.locator('#session-section')).toBeHidden();
   await expect(page.locator('#book-header')).toBeHidden();
@@ -28,15 +28,15 @@ test('the collection keeps generic branding and exposes two public works', async
 });
 test('each work supplies its own identity and missing metadata stays neutral', async ({page}) => {
   await load(page);
-  await expect(page.locator('.identity-title')).toHaveText('Lukija');
+  await expect(page.locator('.identity-title')).toHaveText('Reader');
   await expect(page.locator('#title-content')).toContainText('The Book of Patterns');
   await expect(page.locator('#edition-han')).toHaveText('天地之理');
   await expect(page.locator('#edition-label')).toHaveText('Study edition');
   await expect(page.locator('.work-credit')).toContainText('Example translator');
-  await expect(page).toHaveTitle('First scroll · Lukija');
+  await expect(page).toHaveTitle('First scroll · Reader');
   await load(page,'# A different work\n\nAnother synthetic specimen.','beta.md');
-  await expect(page).toHaveTitle('A different work · Lukija');
-  await expect(page.locator('#bookplate-text')).toHaveText('靜心細讀');
+  await expect(page).toHaveTitle('A different work · Reader');
+  await expect(page.locator('#bookplate-text')).toHaveText('བོད་ཡིག');
   await expect(page.locator('#edition-label')).toHaveText('Reading room');
   await expect(page.locator('#book-header')).not.toContainText(/Patterns|Example|天地之理|Sanming/);
 });
@@ -62,7 +62,7 @@ test('browser back and forward distinguish local reading from collection', async
   await expect(page.locator('#manuscript')).toBeVisible();
   await expect(page.locator('#title-content h1')).toHaveText('First scroll');
   await page.goForward(); await expect(page.locator('#welcome')).toBeVisible();
-  await expect(page).toHaveTitle('Lukija · A quiet reading room');
+  await expect(page).toHaveTitle('Reader · A quiet reading room');
 });
 test('local manuscripts are not saved across reloads', async ({page}) => {
   await load(page,'# Private specimen\n\nUNIQUE_BODY_NOT_FOR_STORAGE');
@@ -87,7 +87,7 @@ test('Chinese-only headings provide their own reading-room title', async ({page}
   await load(page,'# 天地之理\n\nThis is a synthetic interface specimen.');
   await expect(page.locator('#bookplate-text')).toHaveText('天地之理');
   await expect(page.locator('#title-content h1')).toHaveAttribute('lang','zh');
-  await expect(page).toHaveTitle('天地之理 · Lukija');
+  await expect(page).toHaveTitle('天地之理 · Reader');
 });
 test('book metadata is displayed as text, not executable markup', async ({page}) => {
   await load(page,'---\nwork_title: <img src=x onerror=alert(1)>\nauthor: <script>bad()</script>\n---\n# Safe title\n\nFixture.');
@@ -105,7 +105,7 @@ test('same-site deep links do not require a default repository', async ({page}) 
   await page.route('**/texts/example.md',route => route.fulfill({contentType:'text/markdown',body:'# A published work\n\nFixture.'}));
   await page.goto('/?file=texts/example.md');
   await expect(page.locator('#title-content h1')).toHaveText('A published work');
-  await home(page); await expect(page).toHaveTitle('Lukija · A quiet reading room');
+  await home(page); await expect(page).toHaveTitle('Reader · A quiet reading room');
   await expect(page.locator('#welcome')).toBeVisible();
 });
 test('home cancels a pending manuscript instead of reopening it later', async ({page}) => {

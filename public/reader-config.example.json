@@ -1,0 +1,24 @@
+{
+  "works": [
+    {
+      "id": "example-text",
+      "repository": "Lotus-King-Research/Example-Text",
+      "title": "Example text",
+      "originalTitle": "དཔེ་ཆ།",
+      "englishUrl": "https://github.com/Lotus-King-Research/Example-Text/blob/main/translation/en.md",
+      "sourceUrl": "https://github.com/Lotus-King-Research/Example-Text/blob/main/source/bo.md",
+      "sourceLanguage": "bo",
+      "sections": [
+        { "id": "opening", "english": "opening", "source": "དང་པོ།" }
+      ]
+    },
+    {
+      "id": "example-collection",
+      "repository": "Lotus-King-Research/Example-Collection",
+      "title": "Example collection",
+      "englishUrl": "https://github.com/Lotus-King-Research/Example-Collection/tree/main/translation",
+      "sourceUrl": "https://github.com/Lotus-King-Research/Example-Collection/tree/main/source",
+      "sourceLanguage": "bo"
+    }
+  ]
+}

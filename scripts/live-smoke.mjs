@@ -9,7 +9,7 @@ const errors=[]; page.on('pageerror',error=>errors.push(error.message));
 const results=[];
 try {
   await page.goto(process.env.LUKIJA_URL || pathToFileURL(resolve('public/index.html')).href);
-  const works=await page.evaluate(()=>LukijaCatalog.works.map(w=>({id:w.id,title:w.title})));
+  const works=await page.evaluate(()=>(JSON.parse(document.getElementById('reader-config').textContent).works).map(w=>({id:w.id,title:w.title})));
   for (const work of works) {
     await page.keyboard.press('l'); await page.locator(`#library-list [data-work="${work.id}"]`).click();
     await page.waitForFunction(()=>document.querySelector('#work-volume-list button:not(:disabled)'),{},{timeout:25000});

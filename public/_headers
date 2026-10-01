@@ -3,5 +3,5 @@
   X-Frame-Options: DENY
   Referrer-Policy: no-referrer
   Permissions-Policy: camera=(), microphone=(), geolocation=()
-  Content-Security-Policy: default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; style-src 'unsafe-inline'; font-src 'self'; img-src https: http: blob:; connect-src https: http:; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; style-src 'unsafe-inline'; font-src 'self' data:; img-src https: http: blob:; connect-src https: http:; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'
   Cache-Control: public, max-age=0, must-revalidate

@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     concurrency:
-      group: lukija-production
+      group: padma-reader-production
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7.0.1
