@@ -294,3 +294,14 @@ test('a misaligned pair names the passage, both IDs and lines, and links to the 
   expect(Number(line)).toBeGreaterThan(8);
   await expect(status.getByRole('link')).toHaveAttribute('href',`https://github.com/${repository}/blob/main/${englishPath}?plain=1#L${line}`);
 });
+test('the title shows the edition, the verified revisions and the extent', async ({page}) => {
+  await fixture(page);
+  const line = page.locator('.book-header .meta-row');
+  await expect(line).toBeVisible();
+  await expect(line).toContainText('Edition v2');
+  await expect(line).toContainText('5 passages');
+  await expect(line).toContainText(/Verified · [0-9a-f]{7} · [0-9a-f]{7}/);
+  await page.goto('/');
+  // Without an edge, the card keeps the word count made when the text was read.
+  await expect(page.locator('[data-work="structured-text"] .work-card-words')).toHaveText(/^\d+ words$/);
+});

@@ -136,14 +136,14 @@ test('a selection crossing two passages switches their counterparts and leaves t
   await expect(sections(page).nth(2).locator('.english-passage')).toBeVisible();
 });
 
-test('Tibetan passages carry their language and Noto Sans Tibetan font', async ({page}) => {
+test('Tibetan passages carry their language and Noto Serif Tibetan font', async ({page}) => {
   await pairedFixture(page);
   const first = sections(page).nth(0);
   await togglePassage(page, first);
   await expect(first.locator('.source-passage')).toHaveAttribute('lang','bo');
   const family = await first.locator('.source-passage').evaluate(element => getComputedStyle(element).fontFamily);
-  expect(family).toContain('Noto Sans Tibetan');
-  const loadedFaces = await page.evaluate(async () => (await document.fonts.load('16px \"Noto Sans Tibetan\"','བོད།')).length);
+  expect(family).toContain('Noto Serif Tibetan');
+  const loadedFaces = await page.evaluate(async () => (await document.fonts.load('16px \"Noto Serif Tibetan\"','བོད།')).length);
   expect(loadedFaces).toBeGreaterThan(0);
   await expect(page.locator('#title-content h1')).toHaveText('Example text');
   await expect(page.locator('#manuscript h1')).toHaveCount(0);
@@ -220,7 +220,9 @@ test('a local unpaired manuscript remains unchanged', async ({page}) => {
   await expect(page.locator('#manuscript')).toContainText('Original local words.');
   await expect(page.locator('#manuscript .parallel-section, #manuscript .source-passage')).toHaveCount(0);
   await sourceDialog(page);
-  await expect(page.locator('#source-textarea')).toHaveValue(local);
+  const download = page.waitForEvent('download'); await page.locator('#download-markdown').click();
+  const chunks = []; for await (const chunk of await (await download).createReadStream()) chunks.push(chunk);
+  expect(Buffer.concat(chunks).toString()).toBe(local);
 });
 
 test('the offline reading copy retains both languages and switches without GitHub', async ({page,context}, info) => {

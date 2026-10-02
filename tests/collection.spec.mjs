@@ -28,8 +28,9 @@ test('the collection keeps generic branding and exposes two public works', async
   await expect(page.locator('#reading-room-link, .collection-hero, #import-side')).toHaveCount(0);
   await expect(page.locator('#toc li')).toHaveCount(0);
   await expect(page.locator('.toc-wrap')).toBeHidden();
-  await expect(page.locator('.sidebar-bottom #open-welcome')).toHaveText(/Open (?:a )?manuscript/);
-  await expect(page.locator('.sidebar-bottom #demo-button')).toHaveText(/Explore (?:the )?typography/);
+  await expect(page.locator('.sidebar-bottom #open-welcome')).toHaveText('Open your own text');
+  await expect(page.locator('.sidebar-bottom #demo-button')).toHaveCount(0);
+  await expect(page.locator('#settings-dialog #demo-button')).toHaveText('See the typography specimen');
   await sidebar(page); await page.click('#open-welcome');
   await expect(page.locator('#library-list button')).toHaveCount(0);
   await expect(page.locator('#refresh-library')).toBeHidden();
@@ -44,7 +45,7 @@ test('each work supplies its own identity and missing metadata stays neutral', a
   await expect(page).toHaveTitle('First scroll · Reader');
   await load(page,'# A different work\n\nAnother synthetic specimen.','beta.md');
   await expect(page).toHaveTitle('A different work · Reader');
-  await expect(page.locator('#edition-label')).toHaveText('The manuscript');
+  await expect(page.locator('#edition-label')).toHaveText('The text');
   await expect(page.locator('#book-header')).not.toContainText(/Patterns|Example|天地之理|Sanming/);
 });
 test('session cards are distinct from the two published works', async ({page}) => {
@@ -174,8 +175,9 @@ test('opening a work exposes loading progress and arrives in the reader after co
   await expect(page.locator('dialog[open]')).toHaveCount(0);
 });
 
-test('Explore typography remains available in the sidebar without a collection hero', async ({page}) => {
-  await sidebar(page); await page.click('#demo-button');
+test('the typography specimen opens from Appearance without a collection hero', async ({page}) => {
+  await page.click('#settings-trigger'); await page.click('#demo-button');
+  await expect(page.locator('#settings-dialog')).not.toHaveAttribute('open', '');
   await expect(page.locator('#manuscript')).toBeVisible();
   await expect(page.locator('#title-content')).toContainText(/specimen/i);
   await expect(page.locator('#welcome')).toBeHidden();
@@ -215,7 +217,7 @@ test('the sticky toolbar can save a bookmark and the sidebar returns to that rea
   const box = await bookmark.boundingBox();
   expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize().width);
   await page.mouse.click(box.x + box.width / 2,box.y + box.height / 2);
-  await expect(bookmark).toHaveAttribute('aria-pressed','true');
+  await expect(bookmark).toHaveClass(/bookmark-set/); await expect(page.locator('#toast-text')).toHaveText('Bookmarked.');
   await page.evaluate(() => scrollTo(0,1600));
   await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(before + 400);
   await sidebar(page); await page.locator('#resume-button').click();

@@ -16,6 +16,8 @@ const name = /^[\w.-]+$/;
 const encoded = path => path.split('/').map(encodeURIComponent).join('/');
 const hex = buffer => [...new Uint8Array(buffer)].map(b => b.toString(16).padStart(2, '0')).join('');
 
+import {countWords} from '../src/words.js';
+
 export async function blobSHA(bytes) {
   const header = new TextEncoder().encode(`blob ${bytes.length}\0`), blob = new Uint8Array(header.length + bytes.length);
   blob.set(header); blob.set(bytes, header.length);
@@ -169,6 +171,25 @@ export function createEdge({config, fetch: fetcher = globalThis.fetch, kv = null
     }
   }
 
+  // How many words a text is, counted once per revision and kept with the saved copy, so
+  // collection cards can show it without the text reaching the reader first.
+  const wordCounts = new Map();
+  async function words(target, options) {
+    const record = await file(target, options);
+    if (!wordCounts.has(record.sha)) {
+      const key = storageKey('file', target);
+      const stored = kv ? await kv.get('words:' + key, {type: 'json'}).catch(() => null) : null;
+      let count = stored?.sha === record.sha && Number.isSafeInteger(stored.words) ? stored.words : null;
+      if (count === null) {
+        count = countWords(new TextDecoder().decode(record.bytes));
+        if (kv) options.waitUntil(kv.put('words:' + key, JSON.stringify({sha: record.sha, words: count})).catch(() => {}));
+      }
+      if (wordCounts.size > 256) wordCounts.clear();
+      wordCounts.set(record.sha, count);
+    }
+    return {record, words: wordCounts.get(record.sha)};
+  }
+
   const baseHeaders = () => ({
     'X-Reader-Edge': '1', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
     'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'", 'Cross-Origin-Resource-Policy': 'same-origin'
@@ -184,7 +205,7 @@ export function createEdge({config, fetch: fetcher = globalThis.fetch, kv = null
     const url = new URL(request.url);
     if (!['GET', 'HEAD'].includes(request.method)) return json({error: 'Only GET and HEAD are supported.'}, 405, {Allow: 'GET, HEAD'});
     const route = url.pathname.replace(/^\/api\/v1\//, '');
-    if (!['file', 'meta', 'tree'].includes(route)) return json({error: 'Unknown reader API route.'}, 404);
+    if (!['file', 'meta', 'tree', 'words'].includes(route)) return json({error: 'Unknown reader API route.'}, 404);
     const [owner = '', repo = ''] = (url.searchParams.get('repo') || '').split('/');
     const ref = url.searchParams.get('ref') || '', path = url.searchParams.get('path') || '';
     const target = route === 'tree' ? allowed.tree(owner, repo, ref, path) : allowed.file(owner, repo, ref, path);
@@ -194,6 +215,10 @@ export function createEdge({config, fetch: fetcher = globalThis.fetch, kv = null
       if (route === 'tree') {
         const record = await tree(target, {cacheKey, waitUntil});
         return json({path: target.path, files: record.files, fetchedAt: new Date(record.fetchedAt).toISOString(), cache: record.state, upstream: record.upstream || undefined});
+      }
+      if (route === 'words') {
+        const {record, words: count} = await words(target, {cacheKey, waitUntil});
+        return json({path: target.path, sha: record.sha, words: count, fetchedAt: new Date(record.fetchedAt).toISOString(), cache: record.state});
       }
       const record = await file(target, {cacheKey, waitUntil});
       if (route === 'meta') return json({path: target.path, sha: record.sha, size: record.bytes.length, fetchedAt: new Date(record.fetchedAt).toISOString(), cache: record.state, upstream: record.upstream || undefined});

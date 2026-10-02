@@ -180,3 +180,25 @@ test('oversized files are refused', async () => {
   upstream.files['Example/Text/main/paired/translation.md'] = 'x'.repeat(4 * 1024 * 1024 + 1);
   assert.equal((await call(fileURL('paired/translation.md'))).status, 413);
 });
+
+test('word counts are served without the text and counted once per revision', async () => {
+  const {call, upstream, kv, cache} = setup();
+  const url = fileURL('paired/translation.md').replace('/file?', '/words?');
+  const first = await (await call(url)).json();
+  assert.equal(first.words, 2, '"# English" and "Passage." are two words');
+  assert.equal(first.sha, gitSHA('# English\n\nPassage.'));
+  assert.equal(first.text, undefined);
+  const writes = kv.writes.filter(key => key.startsWith('words:')).length;
+  assert.equal(writes, 1);
+  cache.store.clear(); upstream.down = true;
+  const stale = await (await call(url)).json();
+  assert.equal(stale.words, 2); assert.equal(stale.cache, 'stale');
+  assert.equal(kv.writes.filter(key => key.startsWith('words:')).length, writes, 'an unchanged revision is not recounted into storage');
+});
+
+test('word counts are only given for files in the collection', async () => {
+  const {call, upstream} = setup();
+  const response = await call('/api/v1/words?repo=Example%2FText&ref=main&path=paired%2Fprivate.md');
+  assert.equal(response.status, 404);
+  assert.equal(upstream.calls.length, 0);
+});

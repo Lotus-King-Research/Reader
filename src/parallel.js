@@ -156,7 +156,8 @@ function build(english,source,{language='bo',sectionMap=[],anchorAlignment=false
       used.add(match);
       const original=document.createElement('div');original.className='source-passage';original.lang=language;original.hidden=true;original.append(...match.nodes);
       if(format)materialize(original,match,format,true);
-      const pair={section,english:body,source:original,sourceVisible:false,format:format || null};
+      // An empty source side (an editorial placeholder in the translation) has nothing to show.
+      const pair={section,english:body,source:original,sourceVisible:false,format:format || null,emptySource:!original.textContent.trim() && !original.querySelector('img')};
       pair.show=(visible,keepPosition=true,silent=false)=>{
         visible=Boolean(visible);
         const offset=keepPosition ? section.getBoundingClientRect().top : 0;
@@ -172,9 +173,13 @@ function build(english,source,{language='bo',sectionMap=[],anchorAlignment=false
   if(sourceNotes && pairs.length)english.append(sourceNotes);
   if(englishNotes)english.append(englishNotes);
   const referenceHolders=[...new Set([...english.querySelectorAll('.footnote-ref,.legacy-note-ref')].map(ref=>ref.closest('sup') || ref))];
-  for(const holder of referenceHolders)holder.classList.add('reader-note-marker');
+  for(const holder of referenceHolders){
+    holder.classList.add('reader-note-marker');
+    // Markers sit tight against the word they annotate.
+    const before=holder.previousSibling;if(before?.nodeType===3 && /\S\s+$/.test(before.data))before.data=before.data.replace(/\s+$/,'');
+  }
   function setNotesVisible(visible){
-    notesVisible=Boolean(visible);for(const holder of referenceHolders)holder.hidden=!notesVisible;
+    notesVisible=Boolean(visible);for(const holder of referenceHolders)holder.classList.toggle('note-off',!notesVisible);
     syncNotes();return notesVisible;
   }
   const sectionIndex=new Map(sections.map((section,index)=>[section,index]));

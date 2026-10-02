@@ -26,7 +26,7 @@ const githubBase = rawBase ? `https://github.com/${CONFIG.owner}/${CONFIG.reposi
 const apiDirectory = rawBase ? `https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repository}/contents/${CONFIG.directory}?ref=${encodeURIComponent(CONFIG.branch)}` : null;
 const naturalSort = new Intl.Collator(undefined, {numeric: true, sensitivity: 'base'});
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
-const defaults = { theme: 'paper', size: innerWidth < 601 ? 18 : 20, measure: 720, leading: 1.88, citations: true, notes: false };
+const defaults = { theme: 'auto', tibetan: 100, size: innerWidth < 601 ? 18 : 20, measure: 720, leading: 1.88, citations: true, notes: false, shortcuts: true };
 const state = { view: 'collection', readingPosition: null, readingHeadings: [], current: null, library: [], headings: [], search: [], settings: {...defaults}, busy: false,
   loadId: 0, controller: null, parser: null, activeHeading: null, progress: 0, minutes: 0,
   bookmark: null, canStore: true, restoring: false, lastSave: 0, toastTimer: null,
@@ -71,12 +71,15 @@ function notify(text, actionText = '', action = null, duration = 5500) {
 function showError(text, retry = true) {
   $('load-message-text').textContent = text; $('retry-button').hidden = !retry; $('load-message').hidden = false;
 }
-function syncModalState() { document.body.classList.toggle('dialog-open', !!document.querySelector('dialog[open]')); }
+function isModal(dialog) { try { return dialog.matches(':modal'); } catch { return !PANELS.has(dialog.id); } }
+function syncModalState() { document.body.classList.toggle('dialog-open', [...document.querySelectorAll('dialog[open]')].some(isModal)); }
+// Appearance stays beside the page instead of covering it.
+const PANELS = new Set(['settings-dialog']);
 function openDialog(id) {
   closeNav(false);
   const dialog = $(id);
   document.querySelectorAll('dialog[open]').forEach(other => { if (other !== dialog) other.close(); });
-  if (!dialog.open) dialog.showModal();
+  if (!dialog.open) { if (PANELS.has(id)) dialog.show(); else dialog.showModal(); }
   syncModalState();
 }
 function closeDialog(id) { $(id).close(); syncModalState(); }
@@ -90,13 +93,18 @@ $$('dialog').forEach(dialog => {
   dialog.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => dialog.close()));
 });
 function syncSidebarAccess() {
-  $('sidebar').inert = document.body.classList.contains('focus-mode') || (innerWidth<=920 && !document.body.classList.contains('nav-open'));
+  const drawer=innerWidth<=920, open=document.body.classList.contains('nav-open');
+  $('sidebar').inert = document.body.classList.contains('focus-mode') || (drawer && !open);
+  // While the drawer is open on a phone, the page behind it is out of reach.
+  document.querySelector('.shell').inert = drawer && open;
 }
 function openNav() {
   document.body.classList.remove('focus-mode'); syncFocus();
   document.body.classList.add('nav-open'); $('mobile-menu').setAttribute('aria-expanded', 'true');
   if (innerWidth <= 920) { $('sidebar').setAttribute('role', 'dialog'); $('sidebar').setAttribute('aria-modal', 'true'); }
   syncSidebarAccess(); $('close-nav').focus({preventScroll:true});
+  // The contents open at the reader's place.
+  requestAnimationFrame(()=>revealTocEntry($('toc').querySelector('a[aria-current="location"]'),true));
 }
 function closeNav(returnFocus = true) {
   const wasOpen = document.body.classList.contains('nav-open');
@@ -228,7 +236,7 @@ function createCompiler(marked) {
     let html = marked.parse(body);
     // Do not silently discard unused definitions.
     for (const label of definitions.keys()) noteNumber(label);
-    if (ordered.length > 1500) throw new Error('This manuscript has more than 1,500 footnotes. Split it into smaller volumes.');
+    if (ordered.length > 1500) throw new Error('This text has more than 1,500 footnotes. Split it into smaller files.');
     if (ordered.length) {
       const notes = [];
       for (let i = 0; i < ordered.length && i < 1500; i++) {
@@ -261,7 +269,7 @@ function parseMarkdown(source, signal) {
     const abort = () => finish(new DOMException('Cancelled', 'AbortError'));
     const fallback = () => {
       worker?.terminate(); if (blobURL) { URL.revokeObjectURL(blobURL); blobURL = null; }
-      if (source.length > CONFIG.maximumBytes) return finish(new Error('This browser blocks background parsing. Open the reader in a browser with Web Worker support, or split this large manuscript into smaller files.'));
+      if (source.length > CONFIG.maximumBytes) return finish(new Error('This browser blocks background parsing. Open the reader in a browser with Web Worker support, or split this large text into smaller files.'));
       // Parsing is linear, so even a full-size manuscript parses on the main thread.
       setTimeout(() => {
         if (signal?.aborted) return;
@@ -275,7 +283,7 @@ function parseMarkdown(source, signal) {
       const workerCode = engine + '\nconst compile = (' + createCompiler.toString() + ')(self.marked);\nself.onmessage = e => { try { self.postMessage({ok:true, result:compile(e.data)}); } catch(error) { self.postMessage({ok:false, error:String(error.message || error)}); } };';
       blobURL = URL.createObjectURL(new Blob([workerCode], {type:'application/javascript'}));
       worker = new Worker(blobURL);
-      timer = setTimeout(() => finish(new Error('This manuscript took too long to parse. Check for unusually complex Markdown or split it into smaller volumes.')), CONFIG.parseTimeout + CONFIG.parsePerMegabyte * source.length / 1048576);
+      timer = setTimeout(() => finish(new Error('This text took too long to parse. Check for unusually complex Markdown or split it into smaller volumes.')), CONFIG.parseTimeout + CONFIG.parsePerMegabyte * source.length / 1048576);
       worker.onmessage = event => event.data.ok ? finish(null,event.data.result) : finish(new Error(event.data.error));
       worker.onerror = () => fallback();
       worker.postMessage(source);
@@ -304,7 +312,7 @@ function safeDOM(html, base) {
   const classes = new Set(['footnotes','footnote-ref','footnote-back','parallel','source-text','translation','annotation','commentary','root-text','align-center','align-right','reader-pair-end']);
   const frag = document.createDocumentFragment(); const ids = new Map(), usedIds = new Set(); let nodeCount = 0;
   function copy(node, parent, depth = 0) {
-    if (++nodeCount > 180000 || depth > 100) throw new Error('This manuscript is too structurally complex to display safely. Split it into smaller files.');
+    if (++nodeCount > 180000 || depth > 100) throw new Error('This text is too structurally complex to display safely. Split it into smaller files.');
     if (node.nodeType === Node.TEXT_NODE) { parent.append(document.createTextNode(node.textContent)); return; }
     if (node.nodeType !== Node.ELEMENT_NODE || drop.has(node.tagName)) return;
     if (!allowed.has(node.tagName)) { for (const child of node.childNodes) copy(child,parent,depth+1); return; }
@@ -598,14 +606,127 @@ function rebuildCitationLayers() {
   prepareContent(fragment,state.current.metadata || {},state.current);
   if (state.parallelFragment) state.parallel=pairSections(fragment,state.parallelFragment.cloneNode(true),state.current);
   state.parallel?.pairs.forEach(pair=>{if(sourceSections.has(pair.section.id))pair.show(true,false,true);});
-  $('manuscript').replaceChildren(fragment);state.renderedCitations=state.settings.citations;
+  markApparatus(fragment);markNoteTails(fragment);markNotesHeading(fragment);$('manuscript').replaceChildren(fragment);state.renderedCitations=state.settings.citations;
   buildOutline();buildSearchIndex();restorePosition(position);
   announce(state.settings.citations ? 'Attributed quotations are separated from the main text.' : 'Automatic citation formatting is off. Authored blockquotes are retained.');
 }
 
+function tagTibetanRuns(root) {
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT), nodes=[];
+  while (walker.nextNode()) {
+    const node=walker.currentNode, tagged=node.parentElement?.closest('[lang]');
+    if (/[\u0f00-\u0fff]/.test(node.data) && !(tagged && root.contains(tagged))) nodes.push(node);
+  }
+  for (const node of nodes) {
+    const parts=document.createDocumentFragment(); let last=0;
+    for (const match of node.data.matchAll(/[\u0f00-\u0fff](?:[\u0f00-\u0fff\s]*[\u0f00-\u0fff])?/g)) {
+      if (match.index>last) parts.append(node.data.slice(last,match.index));
+      const span=document.createElement('span'); span.lang='bo'; span.textContent=match[0]; parts.append(span);
+      last=match.index+match[0].length;
+    }
+    if (last<node.data.length) parts.append(node.data.slice(last));
+    node.replaceWith(parts);
+  }
+}
+// Display only: typewriter apostrophes inside English words become typographic ones.
+// Search treats both forms alike; code, Tibetan and Chinese are left untouched.
+function typographicApostrophes(root) {
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:node=>node.data.includes("'") && !node.parentElement?.closest('code,pre,kbd,samp,[lang|="bo"],[lang|="zh"]') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT});
+  const nodes=[]; while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) node.data=node.data.replace(/(\p{L})'(\p{L})/gu,'$1’$2').replace(/(\p{L}s)'(?=[\s.,;:!?)\]]|$)/gu,'$1’');
+}
+/* Editorial apparatus written by the translators stays word for word, but is set as
+   apparatus: a bracketed label such as "[Source heading: …]" becomes a small label
+   above the heading, safety notes stand on their own labelled line, and whole-paragraph
+   placeholders are quiet ruled notes. Brackets stay in the DOM for search. */
+const APPARATUS_HEADING=/^\[(Source heading|Source annotation):\s*([\s\S]+?)\]$/;
+function navLabel(text) { const match=APPARATUS_HEADING.exec(String(text).trim()); return match ? match[2].replace(/\.$/,'') : text; }
+function bracketPart(text) { const span=textElement('span',text,'ap-br'); span.setAttribute('aria-hidden','true'); return span; }
+// Turning notes on must not move a word. A run of note markers that ends its line (the end
+// of a block or of a verse line) sits in a zero-width overlay, so it never takes room;
+// a marker inside a line keeps its room always and only becomes visible.
+function noteHolder(el) { return el.closest('sup') || el; }
+function markNoteTails(root) {
+  const holders=[...new Set([...root.querySelectorAll('.reader-note-marker,a.footnote-ref,a.legacy-note-ref')].map(el=>el.closest('.reader-note-marker') || noteHolder(el)))];
+  const done=new Set();
+  for (const holder of holders) {
+    if (done.has(holder) || holder.closest('.footnotes,.note-tail')) continue;
+    // The run of markers this one belongs to, and whether anything follows it on its line.
+    const run=[holder]; let node=holder.nextSibling, ends=true;
+    for (; node; node=node.nextSibling) {
+      if (node.nodeType===3 && !node.textContent.trim()) continue;
+      if (node.nodeType===1 && holders.includes(node)) { run.push(node); continue; }
+      ends=node.nodeType===1 && node.tagName==='BR'; break;
+    }
+    if (!node) { let parent=holder.parentElement; ends=true;
+      // Inline wrappers (emphasis, links) end the line only if nothing follows them either.
+      while (parent && !/^(P|LI|H[1-6]|DD|DT|TD|TH|BLOCKQUOTE|DIV|SECTION|FIGCAPTION)$/.test(parent.tagName)) {
+        let next=parent.nextSibling; while (next && next.nodeType===3 && !next.textContent.trim()) next=next.nextSibling;
+        if (next && !(next.nodeType===1 && next.tagName==='BR')) { ends=false; break; }
+        if (next) break; parent=parent.parentElement;
+      }
+    }
+    run.forEach(item=>done.add(item));
+    if (!ends) continue;
+    const tail=document.createElement('span'); tail.className='note-tail'; tail.setAttribute('data-reader-ui','');
+    holder.before(tail); run.forEach((item,index)=>{ if (index) tail.append(' '); tail.append(item); });
+  }
+}
+// A run of end-of-line markers sits in the margin only where the margin holds it; where it
+// does not (a phone, a long run), the run keeps its room in the line instead. This is decided
+// when the layout changes anyway, never when notes are shown, so showing them moves nothing.
+function fitNoteTails({reset=false}={}) {
+  const main=$('manuscript'); if (state.view!=='reading' || !main || main.hidden) return;
+  if (reset) main.querySelectorAll('.note-tail-inline').forEach(tail=>tail.classList.remove('note-tail-inline'));
+  const area=$('main-content').getBoundingClientRect(), limit=Math.min(area.right,document.documentElement.clientWidth)-4;
+  for (let pass=0; pass<3; pass++) {
+    // Measure every rendered tail in one layout, then change them together.
+    const over=[...main.querySelectorAll('.note-tail:not(.note-tail-inline)')].filter(tail=>{ const box=tail.getClientRects()[0]; return box && box.left+tail.scrollWidth>limit; });
+    if (!over.length) break;
+    over.forEach(tail=>tail.classList.add('note-tail-inline'));
+  }
+}
+// A heading with nothing after it but the notes (such as "Translation notes") belongs to
+// the notes: it is shown and listed in the contents only while notes are shown.
+function markNotesHeading(root) {
+  // Children, not :scope: a document fragment has no element for :scope to match.
+  const children=[...root.children], blocks=children.filter(el=>!el.matches('.footnotes')), last=blocks.at(-1);
+  if (last && /^H[1-6]$/.test(last.tagName) && children.some(el=>el.matches('.footnotes'))) last.setAttribute('data-notes-heading','');
+}
+function markApparatus(root) {
+  for (const heading of root.querySelectorAll('h1,h2,h3,h4')) {
+    if (heading.closest('.source-passage') || heading.querySelector('.apparatus-label')) continue;
+    const match=/^\[(Source heading|Source annotation):\s*/.exec(heading.textContent);
+    const first=[...heading.childNodes].find(node => node.nodeType===3 && node.data.trim());
+    const last=[...heading.childNodes].reverse().find(node => node.nodeType===3 && node.data.trim());
+    if (!match || !first?.data.trimStart().startsWith(match[0].trimEnd()) || !/\]\s*$/.test(last?.data || '')) continue;
+    const lead=first.data.length-first.data.trimStart().length;
+    first.data=first.data.slice(lead+match[0].length);
+    first.before(bracketPart('['),textElement('span',match[1],'apparatus-label'),bracketPart(': '));
+    const close=last.data.lastIndexOf(']'); last.data=last.data.slice(0,close)+last.data.slice(close+1); last.after(bracketPart(']'));
+  }
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:node=>/\[Editorial (?:safety )?note:/.test(node.data) && !node.parentElement?.closest('.source-passage,.apparatus-inline') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT});
+  const notes=[]; while (walker.nextNode()) notes.push(walker.currentNode);
+  for (const node of notes) {
+    const parts=document.createDocumentFragment(); let last=0;
+    for (const match of node.data.matchAll(/\[(Editorial (?:safety )?note):\s*([^\]]+)\]/g)) {
+      if (match.index>last) parts.append(node.data.slice(last,match.index));
+      const note=document.createElement('span'); note.className='apparatus-inline';
+      note.append(bracketPart('['),textElement('span',match[1],'apparatus-label'),bracketPart(': '),match[2],bracketPart(']'));
+      parts.append(note); last=match.index+match[0].length;
+    }
+    if (last<node.data.length) parts.append(node.data.slice(last));
+    node.replaceWith(parts);
+  }
+  for (const p of root.querySelectorAll('p')) {
+    if (p.closest('.source-passage,.footnotes')) continue;
+    const visible=[...p.childNodes].filter(node => !(node.nodeType===1 && node.matches('sup'))).map(node => node.textContent).join('').trim();
+    if (/^\[(?:Source annotation|Joined source fragment|Unresolved source|Provisional source caption)\b[\s\S]*\]$/.test(visible)) p.classList.add('apparatus-block');
+  }
+}
 function prepareContent(fragment, metadata, descriptor) {
   const first = fragment.querySelector('h1');
-  const title = first?.textContent.trim() || metadata.title || descriptor.title || 'Untitled manuscript';
+  const title = first?.textContent.trim() || metadata.title || descriptor.title || 'Untitled text';
   // Move the first H1 into the page masthead only when it begins the document.
   const firstMeaningful = [...fragment.childNodes].find(node => node.nodeType === 1 || node.textContent.trim());
   if (first && firstMeaningful === first) first.remove();
@@ -618,10 +739,20 @@ function prepareContent(fragment, metadata, descriptor) {
     heading.dataset.headingText = heading.textContent;
   });
   fragment.querySelectorAll('p,blockquote,h1,h2,h3,h4,li,td,th').forEach(el => {
-    const tibetan=(el.textContent.match(/[\u0f00-\u0fff]/g) || []).length,letters=(el.textContent.match(/\p{L}/gu) || []).length;
-    if (!el.lang && tibetan && tibetan>=letters*.5) el.lang='bo';
-    else if (!el.lang && chineseDominant(el.textContent)) el.lang = 'zh';
+    if (el.lang) return;
+    const text=el.textContent, tibetan=/[\u0f00-\u0fff]/.test(text);
+    // Tag a whole element only when it is Tibetan; in mixed lines tag the Tibetan runs,
+    // so English labels keep the book face and screen readers switch voice per run.
+    if (tibetan && (text.match(/\p{Script=Latin}/gu) || []).length < 3) el.lang='bo';
+    else if (tibetan) tagTibetanRuns(el);
+    else if (chineseDominant(text)) el.lang = 'zh';
   });
+  // A paragraph of head marks alone (yig mgo, shad) is an ornament for the passage it opens.
+  fragment.querySelectorAll('p').forEach(p => {
+    const visible=[...p.childNodes].filter(node => !(node.nodeType===1 && node.matches('sup'))).map(node => node.textContent).join('');
+    if (/^[\u0f01-\u0f14\s]+$/.test(visible) && visible.trim()) p.classList.add('tibetan-sign');
+  });
+  typographicApostrophes(fragment);
   fragment.querySelectorAll('table').forEach(table => {
     const wrap = document.createElement('div'); wrap.className = 'table-scroll'; wrap.tabIndex = 0;
     wrap.setAttribute('role','region'); wrap.setAttribute('aria-label',table.querySelector('caption')?.textContent || 'Scrollable table');
@@ -648,12 +779,12 @@ function hanNumber(n) {
 }
 function fileLabel(path) {
   const n = volumeNumber(path); if (n !== null) return 'Part '+String(n).padStart(2,'0');
-  let name=path.split('/').pop() || 'Manuscript';
+  let name=path.split('/').pop() || 'Text';
   try { name=decodeURIComponent(name); } catch (_) {}
   return name.replace(/\.(md|markdown|txt)$/i,'').replace(/[-_]/g,' ');
 }
 function cleanPath(path) {
-  if (typeof path !== 'string') throw new Error('Invalid manuscript path.');
+  if (typeof path !== 'string') throw new Error('Invalid text path.');
   const normalized = path.replace(/^\.\//,'');
   if (normalized.startsWith('/') || normalized.includes('\\') || normalized.split('/').some(part => part === '..') || !/\.(md|markdown|txt)$/i.test(normalized)) throw new Error('Choose a relative Markdown path inside this project.');
   return normalized;
@@ -684,13 +815,26 @@ let catalogActive=false,catalogTimer=null;
 function catalogCard(work) {
   const li=document.createElement('li'),button=document.createElement('button');
   button.type='button';button.className='work-card published-card';button.dataset.work=work.id;
-  button.append(textElement('span','English · Tibetan','work-card-kicker'));
+  const head=document.createElement('span'); head.className='work-card-head';
+  head.append(textElement('span','English · '+languageName(work.sourceLanguage || 'bo'),'work-card-kicker'));
+  if (work.restricted) { const mark=document.createElement('span'); mark.className='work-card-restricted'; mark.append(icon('lock'),document.createTextNode('Restricted')); head.append(mark); button.classList.add('restricted'); }
+  button.append(head);
   const original=textElement('span',work.originalTitle || '', 'work-card-original');original.lang=work.sourceLanguage || 'bo';button.append(original);
-  button.append(textElement('span',work.title,'work-card-title'),textElement('span',work.description,'work-card-detail'));
+  // How long the translation is, in words; nothing until it is known.
+  const words=workWords(work);
+  button.append(textElement('span',work.title,'work-card-title'),textElement('span',words ? formatWords(words) : '','work-card-words'));
+  // Where the reader stopped (position and section label only; never text).
+  const last=storageRead('last:'+work.id), known=last && (work.english.kind==='file' || !work.volumes.length || work.volumes.some(file=>file.path===last.path));
+  const continuing=known && last.progress>.025, finished=continuing && last.progress>=.985;
+  if (continuing) {
+    const bar=document.createElement('span'), fill=document.createElement('span');
+    bar.className='work-card-progress'; bar.setAttribute('aria-hidden','true'); fill.style.transform=`scaleX(${Math.min(1,last.progress)})`; bar.append(fill);
+    button.append(bar, textElement('span', finished ? 'Read to the end' : `${last.label ? last.label+' · ' : ''}${Math.round(last.progress*100)}% read`, 'work-card-continue'));
+  }
   const status=work.error ? 'Source unavailable · Try again' : work.pending ? 'Finding editions…' : work.stale ? (work.stale.state==='unverified' ? 'Not checked with GitHub · may not be the latest' : 'Saved copy · may not be the latest') : '';
   button.append(textElement('span',status,'work-card-status'));
-  const foot=textElement('span',work.english.kind==='file' || work.volumes.length===1 ? 'Read' : work.checkedAt ? 'Read first edition' : 'Show editions','work-card-bottom');foot.append(icon('arrow'));button.append(foot);
-  button.addEventListener('click',()=>showWork(work.id,li.querySelector('select')?.value));li.append(button);
+  const foot=textElement('span',continuing && !finished ? 'Continue reading' : finished ? 'Read again' : work.english.kind==='file' || work.volumes.length===1 ? 'Read' : work.checkedAt ? 'Read first edition' : 'Show editions','work-card-bottom');foot.append(icon('arrow'));button.append(foot);
+  button.addEventListener('click',()=>showWork(work.id,continuing && !finished ? last.path : li.querySelector('select')?.value));li.append(button);
   if(work.english.kind==='directory' && work.volumes.length>1){
     const label=textElement('label','Edition','edition-picker'),select=document.createElement('select');select.dataset.editions=work.id;select.setAttribute('aria-label','Edition of '+work.title);
     for(const file of work.volumes){const option=textElement('option',catalog.descriptor(work.id,file.path).title);option.value=file.path;select.append(option);}
@@ -698,6 +842,26 @@ function catalogCard(work) {
     select.addEventListener('change',()=>openEntry(catalog.descriptor(work.id,select.value)));label.append(select);li.append(label);
   }
   return li;
+}
+function formatWords(count) { return `${count.toLocaleString('en')} word${count===1?'':'s'}`; }
+function workWords(work) { return work.words ?? storageRead('words:'+work.id)?.words ?? storageRead('extent:'+work.id)?.words ?? null; }
+// Each card asks the edge once a visit; the answer is kept for the next visit's first paint.
+const wordsAsked=new Set();
+// Only while the collection is on screen and nothing is loading (a link straight to a text
+// passes through the collection first), and one at a time, so a host without the edge is
+// noticed after a single request.
+let wordsTimer=0;
+function fillWordCounts() { clearTimeout(wordsTimer); wordsTimer=setTimeout(askWordCounts,300); }
+async function askWordCounts() {
+  for (const work of catalog.works) {
+    if (state.view!=='collection' || state.busy) return;
+    if (wordsAsked.has(work.id)) continue;
+    wordsAsked.add(work.id);
+    const count=await catalog.wordCount(work.id);
+    if (!Number.isSafeInteger(count)) { if (catalog.edge==='off') return; continue; }
+    work.words=count; storageWrite('words:'+work.id,{words:count});
+    const label=document.querySelector(`[data-work="${CSS.escape(work.id)}"] .work-card-words`); if (label) label.textContent=formatWords(count);
+  }
 }
 function filterCollection() {
   const query=$('collection-search').value.trim().toLocaleLowerCase();let visible=0;
@@ -735,6 +899,21 @@ async function showWork(id,path) {
   }
 }
 $('refresh-catalog').addEventListener('click',()=>catalog.refreshAll({force:true}));
+// One quiet line under the title: which edition, whether it is verified, and how long it is.
+function syncProvenance() {
+  const current=state.current; if (!current) return;
+  const edition=workIdentity(current).edition, version=/v\d[\w.-]*$/i.exec(edition)?.[0];
+  $('source-kind').textContent=current.kind==='specimen' ? 'Design specimen' : current.kind==='embedded' ? 'Offline reading copy' : ['local','paste'].includes(current.kind) ? 'Local text' : edition ? 'Edition '+(version || edition) : 'Public text';
+  $('source-kind').title=edition || '';
+  const passages=state.parallel?.total || 0;
+  $('reading-estimate').textContent=[passages>1 ? passages.toLocaleString('en')+' passages' : '',`About ${state.minutes} min read`].filter(Boolean).join(' · ');
+  const status=$('source-status');
+  if (current.kind==='catalog') {
+    const revisions=[current.revision,current.sourceRevision].filter(Boolean).map(sha=>sha.slice(0,7)).join(' · ');
+    status.textContent=(current.stale ? (current.stale.state==='unverified' ? 'Not checked with GitHub' : 'Saved copy') : 'Verified')+(revisions ? ' · '+revisions : '');
+    status.title=[current.revision ? 'English revision '+current.revision : '',current.sourceRevision ? sourceLanguageLabel()+' revision '+current.sourceRevision : ''].filter(Boolean).join('\n');
+  } else { status.textContent=current.kind==='specimen' ? 'Not source text' : ['local','paste','embedded'].includes(current.kind) ? 'Opened locally' : 'Loaded from source'; status.removeAttribute('title'); }
+}
 // A saved or unverified copy is readable, but the reader must know it may be out of date.
 function staleMessage(stale) {
   if (stale.state==='unverified') return 'GitHub is limiting requests, so this copy has not been checked against its published revision. It may not be the latest version.';
@@ -750,7 +929,7 @@ function syncRevisionNotice() {
   const work=catalog.get(current.catalogId), latest=work.volumes.find(f=>f.path===current.path);
   if (work.pending) return;
   // A live check that finds the same revision confirms the open copy is current.
-  if (latest && !work.stale && !work.error && !latestChanged(work,latest,current)) current.stale=null;
+  if (latest && !work.stale && !work.error && !latestChanged(work,latest,current) && current.stale) { current.stale=null; syncProvenance(); }
   if (latestChanged(work,latest,current)) {
     $('revision-message').textContent='The English or source text has changed. Your current passage has not been changed.';
     $('revision-load').textContent='Load latest'; notice.hidden=false;
@@ -819,18 +998,20 @@ function workIdentity(entry) {
     work: pick(m.work_title, m['work-title'], m.work, entry.workTitle),
     chinese: pick(m.original_title, m.tibetan_title, m.title_bo, entry.originalTitle, m.chinese_title, m['chinese-title'], m.title_zh, m['title-zh'], entry.chineseTitle, chineseDominant(entry.title || '') ? entry.title : ''),
     romanization: pick(m.romanization, m.pinyin),
-    author: pick(m.author), translator: pick(m.translator), edition: pick(m.edition,m.source_edition,m.base_edition)
+    author: pick(m.author), translator: pick(m.translator), edition: pick(m['paired-edition'],m.edition,m['translation-edition'],m.source_edition,m.base_edition)
   };
 }
-function readingLabel(entry) { return entry.kind==='catalog' && catalog.get(entry.catalogId).english.kind==='file' ? entry.workTitle : entry.kind==='catalog' ? entry.workTitle+' · '+fileLabel(entry.path) : entry.title; }
+const SITE_DESCRIPTION=document.querySelector('meta[name="description"]')?.content || '';
+function setDescription(text) { const meta=document.querySelector('meta[name="description"]'); if (meta) meta.content=text || SITE_DESCRIPTION; }
+function readingLabel(entry) { return entry.kind==='embedded' && entry.readingTitle ? entry.readingTitle : entry.kind==='catalog' && catalog.get(entry.catalogId).english.kind==='file' ? entry.workTitle : entry.kind==='catalog' ? entry.workTitle+' · '+fileLabel(entry.path) : entry.title; }
 function renderWorkIdentity(entry, titleNode = null) {
-  const identity = workIdentity(entry), specimen = entry.kind === 'specimen', title = entry.title || 'Untitled manuscript';
+  const identity = workIdentity(entry), specimen = entry.kind === 'specimen', title = entry.title || 'Untitled text';
   const heading = titleNode || textElement('h1', title);
   if(entry.kind==='catalog' && catalog.get(entry.catalogId).english.kind==='file')heading.textContent=entry.workTitle;
   heading.classList.add('volume-title'); heading.id ||= 'volume-title';
   if (/[\u0f00-\u0fff]/.test(title))heading.lang='bo';else if (chineseDominant(title)) heading.lang = 'zh';
   const part = entry.number ? fileLabel(entry.path || entry.filename || '') : '';
-  const kicker = specimen ? 'Typography specimen · not a translation' : [identity.work !== title ? identity.work : '', part].filter(Boolean).join(' · ') || 'The manuscript';
+  const kicker = specimen ? 'Typography specimen · not a translation' : [identity.work !== title ? identity.work : '', part].filter(Boolean).join(' · ') || 'The text';
   $('title-content').replaceChildren(textElement('div', kicker, 'volume-kicker'));
   if (identity.chinese && identity.chinese !== title) {
     const original = textElement('p', identity.chinese, 'work-original-title');
@@ -845,13 +1026,14 @@ function renderWorkIdentity(entry, titleNode = null) {
   $('bookplate-text').textContent = hanTitle && [...hanTitle].length <= 12 ? hanTitle : 'བོད་ཡིག';
   $('edition-han').lang=entry.sourceLanguage || (/[\u0f00-\u0fff]/.test(hanTitle)?'bo':'zh');
   $('edition-han').textContent = hanTitle || ''; $('edition-han').title = hanTitle;
-  $('edition-label').textContent = specimen ? 'An interface specimen, not source text' : identity.edition || 'The manuscript';
+  $('edition-label').textContent = specimen ? 'An interface specimen, not source text' : identity.edition || 'The text';
   $('toolbar-room').textContent = 'Reader';
   $('toolbar-volume').textContent = readingLabel(entry); $('toolbar-volume').title = readingLabel(entry);
   $('toc-label').textContent = 'In this text'; document.title = readingLabel(entry) + ' · Reader';
 }
 function setView(view) {
   state.view=view;document.body.dataset.view=view;const reading=view==='reading';$('welcome').hidden=reading;
+  if (!reading) fillWordCounts();
   if(!reading){$('revision-notice').hidden=true;$('stale-badge').hidden=true;}
   $('paired-status').hidden=!reading || !state.current?.sourceError;
   ['book-header','manuscript','manuscript-end'].forEach(id=>$(id).hidden=!reading);
@@ -869,7 +1051,7 @@ function showCollection(options = {}) {
   $('load-message').hidden = true; $('toast').hidden = true;
   setView('collection'); state.headings = []; state.activeHeading = null;
   $('toolbar-room').textContent = 'Reader'; $('toolbar-volume').textContent = 'Collection'; $('toolbar-volume').removeAttribute('title');
-  document.title = 'Reader · Collection'; renderCollection();
+  document.title = 'Reader · Collection'; setDescription(''); renderCollection();
   if (catalogActive) refreshOpenWorks();
   if (options.updateURL !== false) updateLocation(null, '', false, 'collection');
   window.scrollTo({top: 0, behavior: 'instant'});
@@ -878,7 +1060,7 @@ function showCollection(options = {}) {
 }
 function returnToReading(options = {}) {
   if(state.busy){state.controller?.abort();++state.loadId;setBusy(false);}
-  if (!state.current) { showLibrary(); return; }
+  if (!state.current) { if (LOCAL_TEXTS) showLibrary(); else showCollection(); return; }
   if (state.view === 'reading') { closeNav(false); return; }
   closeNav(false); setView('reading'); syncCitationSetting(); state.headings = state.readingHeadings; renderOutline();
   $('toolbar-room').textContent = 'Reader';
@@ -924,6 +1106,7 @@ function renderCollection() {
   $('published-count').textContent = `${catalog.works.length + published.length} ${catalog.works.length + published.length===1?'work':'works'}`;
   $('refresh-catalog').disabled = catalog.works.some(w=>w.pending);
   $('continue-reading').hidden = !state.current; $('continue-title').textContent = state.current ? readingLabel(state.current) : '';
+  if (state.view === 'collection') fillWordCounts();
 }
 ['collection-link','next-volume'].forEach(id => $(id).addEventListener('click', () => showCollection()));
 $('home-link').addEventListener('click', event => { event.preventDefault(); showCollection(); });
@@ -949,8 +1132,12 @@ function renderLibrary() {
     }); li.append(button); $('library-list').append(li);
   }
 }
-function showLibrary() { renderLibrary(); $('library-error').hidden = true; openDialog('library-dialog'); }
+// A collection can turn off opening one's own files: the entry points go, offline copies stay.
+const LOCAL_TEXTS = catalog.localTexts;
+function showLibrary() { if (!LOCAL_TEXTS) return; renderLibrary(); $('library-error').hidden = true; openDialog('library-dialog'); }
 $('open-welcome').addEventListener('click',showLibrary);
+$('open-welcome').hidden = !LOCAL_TEXTS;
+document.querySelectorAll('[data-local-texts]').forEach(el => { el.hidden = !LOCAL_TEXTS; });
 
 async function fetchText(url,parentSignal,onProgress) {
   const controller = new AbortController();
@@ -963,14 +1150,14 @@ async function fetchText(url,parentSignal,onProgress) {
       const error = new Error(response.status === 404 ? 'The file could not be found or is not publicly accessible.' : `The server returned HTTP ${response.status}.`);
       error.status = response.status; throw error;
     }
-    if (Number(response.headers.get('content-length')) > CONFIG.maximumBytes) throw new Error('This file exceeds the 4 MB manuscript limit.');
+    if (Number(response.headers.get('content-length')) > CONFIG.maximumBytes) throw new Error('This file exceeds the 4 MB limit for a text.');
     if (/text\/html/i.test(response.headers.get('content-type') || '')) throw new Error('That address returned a web page, not Markdown. Use the raw file URL.');
     if (response.body?.getReader) {
       const reader = response.body.getReader(), decoder = new TextDecoder(); let total = 0, text = '';
       while (true) {
         const {done,value} = await reader.read(); if (done) break;
         total += value.byteLength;
-        if (total > CONFIG.maximumBytes) { await reader.cancel(); throw new Error('This file exceeds the 4 MB manuscript limit.'); }
+        if (total > CONFIG.maximumBytes) { await reader.cancel(); throw new Error('This file exceeds the 4 MB limit for a text.'); }
         text += decoder.decode(value,{stream:true});
         const expected=Number(response.headers.get('content-length')) || 0;
         onProgress?.({stage:'download',progress:expected?Math.min(.98,total/expected):Math.min(.9,total/(total+65536)),loadedBytes:total,totalBytes:expected || null});
@@ -978,11 +1165,11 @@ async function fetchText(url,parentSignal,onProgress) {
       onProgress?.({stage:'ready',progress:1,loadedBytes:total,totalBytes:total});return text+decoder.decode();
     }
     const text = await response.text();
-    if (new Blob([text]).size > CONFIG.maximumBytes) throw new Error('This file exceeds the 4 MB manuscript limit.');
+    if (new Blob([text]).size > CONFIG.maximumBytes) throw new Error('This file exceeds the 4 MB limit for a text.');
     return text;
   } catch (error) {
     if (parentSignal?.aborted) throw new DOMException('Cancelled','AbortError');
-    if (controller.signal.aborted) throw new Error('The manuscript request timed out.');
+    if (controller.signal.aborted) throw new Error('The request for the text timed out.');
     throw error;
   } finally { clearTimeout(timeout); parentSignal?.removeEventListener('abort',abort); }
 }
@@ -995,7 +1182,7 @@ async function getSource(descriptor, signal, onProgress) {
     try { return {text:await fetchText(local,signal,onProgress),sourceURL:local}; }
     catch (error) { if (signal.aborted || !descriptor.sourceURL) throw error; }
   }
-  if (!descriptor.sourceURL) throw new Error("Open this manuscript from a hosted collection, or choose its local Markdown file.");
+  if (!descriptor.sourceURL) throw new Error("Open this text from a hosted collection, or choose its local Markdown file.");
   return {text:await fetchText(descriptor.sourceURL,signal,onProgress),sourceURL:descriptor.sourceURL};
 }
 let loadingTimer=null, loadingPercent=0;
@@ -1004,7 +1191,7 @@ function loadingProgress(value,text) {
   $('loading-progress').setAttribute('aria-valuenow',String(loadingPercent));$('loading-fill').style.transform=`scaleX(${loadingPercent/100})`;$('loading-percent').textContent=loadingPercent+'%';
   if(text)$('loading-text').textContent=text;
 }
-function setBusy(on,text='Opening manuscript…') {
+function setBusy(on,text='Opening the text…') {
   clearTimeout(loadingTimer);state.busy=on;document.body.classList.toggle('loading',on);$('main-content').setAttribute('aria-busy',String(on));
   if(on){loadingPercent=0;$('loading-panel').hidden=false;$('loading-panel').classList.remove('complete');loadingProgress(2,text);announce(text);}
   else {
@@ -1012,12 +1199,26 @@ function setBusy(on,text='Opening manuscript…') {
     $('loading-panel').classList.add('complete');loadingTimer=setTimeout(()=>{$('loading-panel').hidden=true;},reduceMotion.matches?0:220);
   }
 }
-function sourceLanguageLabel() {return state.current?.sourceLanguage==='bo' || !state.current?.sourceLanguage ? 'Tibetan' : 'Source';}
+const languageNames=typeof Intl.DisplayNames==='function' ? new Intl.DisplayNames(['en'],{type:'language'}) : null;
+function languageName(code) {
+  try { const name=languageNames?.of(code); if (name && name.toLowerCase()!==String(code).toLowerCase()) return name; } catch {}
+  return code==='bo' ? 'Tibetan' : 'Source';
+}
+function sourceLanguageLabel() {return languageName(state.current?.sourceLanguage || 'bo');}
 function syncNotesToggle() {
   const button=$('notes-toggle');button.hidden=state.view!=='reading' || !$('manuscript').querySelector('.footnote-ref,.legacy-note-ref,.footnotes');
   button.setAttribute('aria-pressed',String(!!state.settings.notes));button.setAttribute('aria-label',state.settings.notes?'Hide endnotes':'Show endnotes');button.title=state.settings.notes?'Hide endnote links':'Show endnote links';
   document.body.dataset.notes=state.settings.notes?'visible':'hidden';
+  // With notes hidden, the end of the text says they are there and how to show them.
+  const notes=state.view==='reading' && $('manuscript').querySelector(':scope > .footnotes'), heading=$('manuscript').querySelector('[data-notes-heading]');
+  $('notes-invite').hidden=!notes || state.settings.notes;
+  $('notes-invite-text').textContent=`${heading ? navLabel(heading.dataset.headingText || heading.textContent.replace(/§$/,'').trim()) : 'Notes'} are hidden.`;
 }
+$('notes-invite-button').addEventListener('click',()=>{
+  setNotesVisible(true);
+  const target=$('manuscript').querySelector('[data-notes-heading]') || $('manuscript').querySelector(':scope > .footnotes:not([hidden])');
+  if (target) target.scrollIntoView({block:'start',behavior:reduceMotion.matches ? 'instant' : 'smooth'});
+});
 function setNotesVisible(visible,persist=true) {
   const changed=state.settings.notes!==!!visible;state.settings.notes=!!visible;state.parallel?.setNotesVisible(!!visible);syncNotesToggle();
   if(persist)storageWrite('settings',state.settings);
@@ -1032,8 +1233,48 @@ function revealPassage(el) {
   else if(pair && el.closest('.english-passage'))pair.show(false,false);
 }
 function isPairedSchema(schema){return schema==='paired-text/1' || schema==='paired-text/2';}
+function switchKey(entry=state.current) {
+  const m=entry?.metadata || {};
+  return isPairedSchema(m.schema) && m['text-id'] ? 'switched:'+m['text-id']+'@'+(m['paired-edition'] || m['translation-edition'] || '') : '';
+}
+// Which passages the reader turned to the source, by pair ID only (never text).
+function rememberSwitches() {
+  const key=switchKey(); if (!key || !state.parallel) return;
+  const ids=state.parallel.pairs.filter(pair=>pair.sourceVisible).map(pair=>pair.section.id);
+  if (ids.length) { storageWrite(key,ids.slice(0,10000)); dismissSourceHint(); } else storageRemove(key);
+  syncSwitchedControl();
+}
+function restoreSwitches() {
+  const key=switchKey(), ids=key ? storageRead(key) : null;
+  if (!Array.isArray(ids) || !ids.length || !state.parallel) return 0;
+  const wanted=new Set(ids); let count=0;
+  for (const pair of state.parallel.pairs) if (wanted.has(pair.section.id) && !pair.emptySource) { pair.show(true,false,true); count++; }
+  return count;
+}
+function syncSwitchedControl() {
+  const count=state.parallel?.pairs.filter(pair=>pair.sourceVisible).length || 0;
+  $('switched-group').hidden=!count;
+  $('switched-count').textContent=`${count.toLocaleString('en')} passage${count===1?' is':'s are'} shown in ${sourceLanguageLabel()}.`;
+}
+$('show-all-english').addEventListener('click',()=>{
+  const position=currentPosition();
+  state.parallel?.pairs.forEach(pair=>{ if (pair.sourceVisible) pair.show(false,false,true); });
+  restorePosition(position); rememberSwitches(); announce('All passages are shown in English.');
+});
+// A one-time note that every passage has its source beside it.
+function sourceHintText() {
+  const language=sourceLanguageLabel(), touch=matchMedia('(hover: none)').matches;
+  return touch ? `Every passage has its ${language} beside it. Select a passage and choose Show ${language}.`
+    : `Every passage has its ${language} beside it. Select a passage and right-click${state.settings.shortcuts!==false ? ', or press T,' : ''} to read it in ${language}.`;
+}
+function syncSourceHint() {
+  const show=state.view==='reading' && state.current?.kind!=='specimen' && !!state.parallel?.pairs.length && !storageRead('hint:source');
+  $('source-hint').hidden=!show; if (show) $('source-hint-text').textContent=sourceHintText();
+}
+function dismissSourceHint() { if (!storageRead('hint:source')) storageWrite('hint:source',1); $('source-hint').hidden=true; }
+$('source-hint-dismiss').addEventListener('click',()=>{ dismissSourceHint(); $('manuscript').focus?.({preventScroll:true}); });
 function pairSections(fragment,original,candidate) {
-  const parallel=ReaderParallel.build(fragment,original,{language:candidate.sourceLanguage || 'bo',sectionMap:candidate.sectionMap || [],anchorAlignment:isPairedSchema(candidate.metadata?.schema),structures:candidate.sourceStructures || [],onToggle:()=>updateProgress()});
+  const parallel=ReaderParallel.build(fragment,original,{language:candidate.sourceLanguage || 'bo',sectionMap:candidate.sectionMap || [],anchorAlignment:isPairedSchema(candidate.metadata?.schema),structures:candidate.sourceStructures || [],onToggle:()=>{fitNoteTails();updateProgress();rememberSwitches();}});
   parallel.setNotesVisible(state.settings.notes);return parallel;
 }
 async function prepareParallel(fragment,candidate,signal) {
@@ -1049,10 +1290,10 @@ async function prepareParallel(fragment,candidate,signal) {
     if(schema==='paired-text/2'){
       if(candidate.structureError)throw Object.assign(new Error(candidate.structureError),{side:'translation',line:candidate.structureErrorLine});
       if(compiled.structureError)throw Object.assign(new Error(compiled.structureError),{side:'source',line:compiled.structureErrorLine});
-      if(!candidate.metadata['text-id'] || !compiled.metadata['text-id'])throw new Error('Both paired-text manuscripts must identify their text-id.');
+      if(!candidate.metadata['text-id'] || !compiled.metadata['text-id'])throw new Error('Both paired-text files must identify their text-id.');
       if(!candidate.metadata['source-edition'] || !compiled.metadata.edition || candidate.metadata['source-edition']!==compiled.metadata.edition || (compiled.metadata['source-edition'] && compiled.metadata['source-edition']!==compiled.metadata.edition))throw new Error('The translation and source edition do not match.');
       if(!candidate.metadata['translation-edition'])throw new Error('The paired translation must identify its translation-edition.');
-      if([candidate.metadata.language,compiled.metadata.language].some(language=>!language || !/^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(language)))throw new Error('Both paired-text manuscripts must declare a valid language.');
+      if([candidate.metadata.language,compiled.metadata.language].some(language=>!language || !/^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(language)))throw new Error('Both paired-text files must declare a valid language.');
       const unformatted=compiled.structures.find(pair=>pair.formatCount!==1 || !['prose','verse','h1','h2','h3'].includes(pair.format));
       if(unformatted)throw Object.assign(new Error(`Source pair ${unformatted.id} at line ${unformatted.line} must declare exactly one format: prose, verse, h1, h2, or h3.`),{side:'source',line:unformatted.line});
       const english=candidate.structures,source=compiled.structures;
@@ -1071,7 +1312,34 @@ async function prepareParallel(fragment,candidate,signal) {
     return {parallel,parallelFragment};
   } catch(error){if(signal?.aborted)throw error;candidate.sourceError=error.message;candidate.sourceErrorAt=error.line?{side:error.side,line:error.line}:null;candidate.sourceText='';delete candidate.sourceStructures;return unpaired();}
 }
+// A restricted work is opened only after the reader confirms their authorization. This is
+// an acknowledgement, not access control: the files stay wherever they are published.
+const confirmedRestricted=new Set();
+function isRestricted(entry) { return entry?.kind==='catalog' ? !!catalog.get(entry.catalogId)?.restricted : entry?.restricted===true; }
+function restrictedKey(entry) { return entry.kind==='catalog' ? 'catalog:'+entry.catalogId : entry.id; }
+function confirmRestricted(entry) {
+  if (!isRestricted(entry) || confirmedRestricted.has(restrictedKey(entry))) return Promise.resolve(true);
+  const dialog=$('restricted-dialog');
+  $('restricted-title').textContent=entry.kind==='catalog' ? catalog.get(entry.catalogId)?.title || entry.workTitle || 'This text' : entry.readingTitle || entry.workTitle || entry.title || 'This text';
+  return new Promise(resolve=>{
+    const finish=ok=>{
+      dialog.removeEventListener('cancel',cancel); $('restricted-yes').onclick=null; $('restricted-no').onclick=null;
+      if (dialog.open) dialog.close(); syncModalState();
+      if (ok) confirmedRestricted.add(restrictedKey(entry));
+      resolve(ok);
+    };
+    const cancel=event=>{ event.preventDefault(); finish(false); };
+    dialog.addEventListener('cancel',cancel);
+    $('restricted-yes').onclick=()=>finish(true); $('restricted-no').onclick=()=>finish(false);
+    openDialog('restricted-dialog'); $('restricted-no').focus();
+  });
+}
 async function loadDocument(descriptor, options = {}) {
+  if (!(await confirmRestricted(descriptor))) {
+    // Declining leaves the reader where they were; a declined link lands on the collection.
+    if (state.view!=='reading') { showCollection({updateURL:false,focus:false}); updateLocation(null,'',true,'collection'); }
+    return false;
+  }
   savePosition(true); state.controller?.abort();
   const controller = new AbortController(); state.controller = controller;
   const loadId = ++state.loadId; const requestedHash = options.section ?? ''; state.hasMoved = false;
@@ -1079,13 +1347,13 @@ async function loadDocument(descriptor, options = {}) {
   try {
     const result=await getSource(descriptor,controller.signal,event=>{
       if(loadId!==state.loadId)return;
-      loadingProgress(5+event.progress*70,event.stage==='metadata'?'Checking the manuscript…':event.stage==='ready'?'Preparing the reading page…':event.phase==='verify'?'Verifying the manuscripts…':'Loading English and Tibetan…');
+      loadingProgress(5+event.progress*70,event.stage==='metadata'?'Checking the text…':event.stage==='ready'?'Preparing the reading page…':event.phase==='verify'?'Verifying the texts…':'Loading English and Tibetan…');
     });
     loadingProgress(76,'Setting the English text…');
     await new Promise(resolve=>requestAnimationFrame(resolve));
     if (result.descriptor) descriptor={...descriptor,...result.descriptor};
-    if (new Blob([result.text]).size > CONFIG.maximumBytes) throw new Error('This file exceeds the 4 MB manuscript limit.');
-    if (!result.text.trim()) throw new Error('This manuscript is empty. Add text to the Markdown file and reopen it.');
+    if (new Blob([result.text]).size > CONFIG.maximumBytes) throw new Error('This file exceeds the 4 MB limit for a text.');
+    if (!result.text.trim()) throw new Error('This text is empty. Add text to the Markdown file and reopen it.');
     const compiled = await parseMarkdown(result.text,controller.signal);
     if (loadId !== state.loadId) return false;
     const fragment = safeDOM(compiled.html,result.sourceURL);
@@ -1097,13 +1365,14 @@ async function loadDocument(descriptor, options = {}) {
     loadingProgress(85,'Preparing Tibetan passages…');await new Promise(resolve=>requestAnimationFrame(resolve));
     if(loadId!==state.loadId || controller.signal.aborted)return false;
     const paired=await prepareParallel(fragment,candidate,controller.signal);
+    markApparatus(fragment); markNoteTails(fragment); markNotesHeading(fragment);
     if(loadId!==state.loadId || controller.signal.aborted)return false;
     loadingProgress(94,'Finishing the reading page…');await new Promise(resolve=>requestAnimationFrame(resolve));
     if(loadId!==state.loadId || controller.signal.aborted)return false;
     // Publish identity and document together, only after the entire pair is ready.
     if(candidate.kind!=='specimen')addToLibrary(candidate);
     state.current=candidate;state.sourceFragment=sourceFragment;state.parallel=paired.parallel;state.parallelFragment=paired.parallelFragment;state.renderedCitations=state.settings.citations;
-    $('manuscript').replaceChildren(fragment);$('manuscript').dataset.alignment=isPairedSchema(candidate.metadata?.schema)?'anchors':'headings';$('manuscript').dataset.schema=candidate.metadata?.schema || '';
+    $('manuscript').replaceChildren(fragment);const restoredSwitches=restoreSwitches();$('manuscript').dataset.alignment=isPairedSchema(candidate.metadata?.schema)?'anchors':'headings';$('manuscript').dataset.schema=candidate.metadata?.schema || '';
     $('paired-status').replaceChildren(candidate.sourceError?'Tibetan source unavailable. '+candidate.sourceError:'');
     const at=candidate.sourceErrorAt, lineURL=at && (at.side==='source' ? candidate.sourceGithubURL || candidate.sourceDescriptor?.githubURL : candidate.githubURL);
     if(lineURL && /^https:\/\/github\.com\//.test(lineURL)){
@@ -1111,10 +1380,8 @@ async function loadDocument(descriptor, options = {}) {
       $('paired-status').append(' ',link);
     }
     setView('reading'); syncCitationSetting();
-    renderWorkIdentity(candidate, prepared.titleNode);
+    renderWorkIdentity(candidate, prepared.titleNode); $('restricted-mark').hidden=!isRestricted(candidate);
     const shortTitle = readingLabel(candidate);
-    $('source-kind').textContent = candidate.kind === 'specimen' ? 'Design specimen' : candidate.kind === 'embedded' ? 'Offline reading copy' : candidate.kind === 'local' || candidate.kind === 'paste' ? 'Local manuscript' : 'Public manuscript';
-    $('source-status').textContent=candidate.kind === 'catalog' ? (candidate.stale ? (candidate.stale.state==='unverified' ? 'Not checked with GitHub · ' : 'Saved copy · ')+candidate.revision.slice(0,7) : 'GitHub · '+candidate.revision.slice(0,7)) : candidate.kind === 'specimen' ? 'Not source text' : candidate.kind === 'local' || candidate.kind === 'paste' || candidate.kind === 'embedded' ? 'Opened locally' : 'Loaded from source';
     $('source-button').disabled = false; $('bookmark-button').disabled = candidate.kind === 'specimen';
     const countable = $('manuscript').cloneNode(true);
     countable.querySelectorAll('[data-reader-ui],[hidden]').forEach(el=>el.remove());
@@ -1122,33 +1389,53 @@ async function loadDocument(descriptor, options = {}) {
     const latinWords = (plainText.replace(/\p{Script=Han}/gu,' ').match(/[\p{L}\p{N}]+/gu) || []).length;
     const hanChars = (plainText.match(/\p{Script=Han}/gu) || []).length;
     state.minutes = Math.max(1,Math.ceil(latinWords/200 + hanChars/350));
-    $('reading-estimate').textContent = `About ${state.minutes} min read`;
+    syncProvenance();
+    // Counts only (never text), so the collection can show each work's extent.
+    if (candidate.kind==='catalog') storageWrite('extent:'+candidate.catalogId,{passages:state.parallel?.total || 0,edition:workIdentity(candidate).edition || '',words:ReaderWords.countWords(candidate.text)});
 
-    $('end-caption').textContent=candidate.kind === 'specimen' ? 'End of the typography specimen. Open your own manuscript to read.' : 'You have reached the end of this manuscript.';
+    $('end-caption').textContent=candidate.kind === 'specimen' ? 'End of the typography specimen. Open your own text to read.' : `End of ${shortTitle}.`;
     document.title=shortTitle+' · '+CONFIG.title;
+    setDescription(candidate.kind==='catalog' ? [readingLabel(candidate),catalog.get(candidate.catalogId)?.description].filter(Boolean).join('. ') : '');
     buildOutline(); buildSearchIndex(); updateBookmarkUI(); renderLibrary();
     loadingProgress(100,'Ready to read');setBusy(false);$('manuscript').classList.remove('reader-arriving');void $('manuscript').offsetWidth;$('manuscript').classList.add('reader-arriving');closeNav(false); $('load-message').hidden=true; syncRevisionNotice(); syncNextJuan();
     const position = storageRead('position:'+candidate.id);
     state.restoring=true; window.scrollTo({top:0,behavior:'instant'});
     if (options.updateURL !== false) updateLocation(candidate,'',false);
     state.loadedFromURL=true;
-    if (requestedHash) {
-      requestAnimationFrame(() => { goToHash(requestedHash,false); state.restoring=false; updateProgress(); });
+    const resumable = position && position.progress > .025 && position.progress < .985 && candidate.kind !== 'specimen';
+    const target = requestedHash ? resolveTarget(requestedHash) : '';
+    let missing = '';
+    if (requestedHash && !target) { missing=requestedHash.replace(/^#/,''); try { missing=decodeURIComponent(missing); } catch {} }
+    if (target) {
+      requestAnimationFrame(() => {
+        goToHash(requestedHash,false); washPassage($(target));
+        state.restoring=false; updateProgress(); state.place=placeAtReadingLine();
+        if (resumable && Math.abs(position.progress-state.progress)>.02) {
+          state.holdPlace={y:window.scrollY};
+          notify('Opened at the linked passage.','Return to your place',() => restorePosition(position),10000);
+        }
+      });
     } else {
+      // A link to a passage this edition lacks falls back to the reader's own place.
       state.restoring=false; updateProgress();
-      if (position && position.progress > .025 && position.progress < .985 && candidate.kind !== 'specimen') {
-        notify('Your place is still here.', 'Resume reading',() => restorePosition(position), 14000);
-      }
+      const absent = missing ? `${missing} is not in this edition. ` : '';
+      if (resumable) requestAnimationFrame(() => {
+        if (loadId!==state.loadId) return;
+        restorePosition(position);
+        notify(absent+(position.label ? `Back at ${position.label}.` : 'Back where you left off.'),'Start from the beginning',() => { window.scrollTo({top:0,behavior:'instant'}); savePosition(true); },absent ? 9000 : 6000);
+      });
+      else if (absent) notify(absent+'The text opens at the beginning.','',null,9000);
     }
-    announce(`${shortTitle} opened. ${state.headings.length} sections.`);
+    syncSwitchedControl(); syncSourceHint(); fitNoteTails();
+    announce(`${shortTitle} opened. ${state.headings.length} sections.${restoredSwitches ? ` ${restoredSwitches} passage${restoredSwitches===1?'':'s'} in ${sourceLanguageLabel()}, as you left ${restoredSwitches===1?'it':'them'}.` : ''}`);
     return true;
   } catch(error) {
     if (loadId !== state.loadId || error.name === 'AbortError') return false;
     setBusy(false);
     const detail = error instanceof TypeError ? 'The text could not be reached from this browser. This may be a network, privacy, or cross-origin restriction.' : error.message;
     // Published texts come through Reader's own cache, so a retry is the useful advice.
-    showError(`${detail} ${descriptor.kind==='catalog' ? 'Try again in a moment.' : 'You can also open a downloaded Markdown file.'}`,true);
-    $('source-status').textContent=state.current ? 'Previous manuscript kept' : 'Source unavailable';
+    showError(`${detail} ${descriptor.kind==='catalog' || !LOCAL_TEXTS ? 'Try again in a moment.' : 'You can also open a downloaded Markdown file.'}`,true);
+    $('source-status').textContent=state.current ? 'Previous text kept' : 'Source unavailable';
     announce('The text could not be loaded.');
     state.retryDescriptor=descriptor;
     return false;
@@ -1158,7 +1445,7 @@ $('retry-button').addEventListener('click',() => { if(state.retryDescriptor) loa
 
 async function discoverVolumes() {
   $('refresh-library').disabled=true;
-  $('library-status').textContent='Looking for published manuscripts…';
+  $('library-status').textContent='Looking for published texts…';
   let manifestError=null;
   try {
     let entries;
@@ -1173,7 +1460,7 @@ async function discoverVolumes() {
           item.verified=true; addToLibrary(item);
         }
         state.discovered=true;
-        $('library-status').textContent=`${entries.length} manuscript${entries.length===1?'':'s'} listed in the local manifest.`;
+        $('library-status').textContent=`${entries.length} text${entries.length===1?'':'s'} listed in the local manifest.`;
         renderLibrary(); return;
       } catch(error) { manifestError=error; }
     }
@@ -1183,7 +1470,7 @@ async function discoverVolumes() {
     const files=listing.filter(item=>item.type==='file' && /\.(md|markdown)$/i.test(item.name));
     for (const file of files) { const item=fromProject(file.path); item.verified=true; addToLibrary(item); }
     state.discovered=true;
-    $('library-status').textContent=`${files.length} Markdown manuscript${files.length===1?'':'s'} found in ${CONFIG.directory}/. Local imports stay alongside them.`;
+    $('library-status').textContent=`${files.length} Markdown file${files.length===1?'':'s'} found in ${CONFIG.directory}/. Local imports stay alongside them.`;
     renderLibrary();
   } catch(error) {
     $('library-status').textContent='Repository discovery is unavailable. No additional volumes have been assumed. Import local files, or deploy a reader-manifest.json with the site.';
@@ -1200,66 +1487,150 @@ $('url-form').addEventListener('submit',async e=>{
 });
 function openFilePicker() { $('file-input').click(); }
 $('import-library').addEventListener('click',openFilePicker);
+// Only the keys needed to recognise the two halves of a paired text.
+function pairingKeys(text) {
+  const block=/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] || '', keys={};
+  for (const line of block.split(/\r?\n/)) { const match=/^([\w-]+):\s*(.*?)\s*$/.exec(line); if (match) keys[match[1]]=match[2].replace(/^["']|["']$/g,''); }
+  return keys;
+}
+// Two files of one paired text (same schema and text-id, English and a source language)
+// open together as that text, whatever order they arrive in.
+async function pairLocalFiles(files) {
+  const read=await Promise.all(files.map(async file=>({file,text:await file.text()})));
+  read.forEach(item=>{ item.keys=pairingKeys(item.text); });
+  const groups=new Map();
+  for (const item of read) {
+    const {schema,language}=item.keys, textId=item.keys['text-id'];
+    if (!isPairedSchema(schema) || !textId || !/^[a-z]{2,3}(?:-[A-Za-z0-9]+)*$/.test(language || '')) continue;
+    const key=schema+'|'+textId; if (!groups.has(key)) groups.set(key,[]); groups.get(key).push(item);
+  }
+  const pairs=[], used=new Set();
+  for (const group of groups.values()) {
+    const english=group.filter(item=>item.keys.language==='en'), source=group.filter(item=>item.keys.language!=='en');
+    if (english.length!==1 || source.length!==1) continue;
+    const [en,src]=[english[0],source[0]];
+    used.add(en.file); used.add(src.file);
+    pairs.push({id:`local-pair:${en.keys['text-id']}:${en.file.size}:${src.file.size}:${en.file.lastModified}`,kind:'local',filename:en.file.name,path:en.file.name,
+      title:fileLabel(en.file.name),number:null,text:en.text,sourceText:src.text,sourceLanguage:src.keys.language,
+      sourceDescriptor:{kind:'local',filename:src.file.name,path:src.file.name,title:fileLabel(src.file.name)},pairedLocally:true});
+  }
+  return {pairs,rest:files.filter(file=>!used.has(file))};
+}
 async function importFiles(files) {
   const candidates=[...files].filter(file=>/\.(md|markdown|txt)$/i.test(file.name));
-  if (!candidates.length) return notify('Choose a .md, .markdown, or .txt manuscript.');
-  const entries=[]; const rejected=[];
-  for (const file of candidates) {
-    if (file.size>CONFIG.maximumBytes) { rejected.push(file.name); continue; }
+  if (!candidates.length) return notify('Choose a .md, .markdown, or .txt file.');
+  const rejected=candidates.filter(file=>file.size>CONFIG.maximumBytes).map(file=>file.name), accepted=candidates.filter(file=>file.size<=CONFIG.maximumBytes);
+  if (!accepted.length) return notify('These files exceed the 4 MB limit for a text.');
+  const {pairs,rest}=accepted.length>1 ? await pairLocalFiles(accepted) : {pairs:[],rest:accepted};
+  const entries=[...pairs];
+  for (const file of rest) {
     const descriptor={ id:'local:'+file.name+':'+file.size+':'+file.lastModified, kind:'local', filename:file.name,
       path:file.name, title:fileLabel(file.name), number:volumeNumber(file.name), file };
-    addToLibrary(descriptor); entries.push(descriptor);
+    entries.push(descriptor);
   }
-  if (!entries.length) return notify('These files exceed the 4 MB limit per manuscript.');
-  entries.sort((a,b)=>naturalSort.compare(a.filename,b.filename));
+  entries.forEach(addToLibrary);
+  entries.sort((a,b)=>Number(!!b.pairedLocally)-Number(!!a.pairedLocally) || naturalSort.compare(a.filename,b.filename));
   closeDialog('library-dialog'); closeNav(false);
   const ok=await loadDocument(entries[0]); renderLibrary();
-  if (ok && (entries.length>1 || rejected.length)) notify(`${entries.length} manuscript${entries.length===1?'':'s'} opened locally.${rejected.length ? ' Some oversized files were skipped.':''}`);
+  if (!ok) return;
+  if (entries[0].pairedLocally && state.parallel) {
+    // How completely the two files paired, and which edition they are.
+    const total=state.parallel.total, paired=state.parallel.pairs.length, edition=editionLine();
+    notify(`${paired.toLocaleString('en')} of ${total.toLocaleString('en')} passages paired${edition ? ' · '+edition : ''}.${entries.length>1 ? ` ${entries.length-1} more text${entries.length===2?'':'s'} opened locally.` : ''}`,'',null,9000);
+  } else if (entries.length>1 || rejected.length) notify(`${entries.length} text${entries.length===1?'':'s'} opened locally.${rejected.length ? ' Some oversized files were skipped.':''}`);
 }
 $('file-input').addEventListener('change',async e=>{ await importFiles(e.target.files); e.target.value=''; });
 $('paste-button').addEventListener('click',async()=>{
   const text=$('paste-input').value;
   if (!text.trim()) { $('library-error').textContent='Paste some Markdown first.'; $('library-error').hidden=false; return; }
-  if (new Blob([text]).size>CONFIG.maximumBytes) { $('library-error').textContent='This text exceeds the 4 MB manuscript limit.'; $('library-error').hidden=false; return; }
-  const descriptor={id:'paste:'+hashText(text),kind:'paste',title:'Pasted manuscript',number:null,text};
+  if (new Blob([text]).size>CONFIG.maximumBytes) { $('library-error').textContent='This text exceeds the 4 MB limit for a text.'; $('library-error').hidden=false; return; }
+  const descriptor={id:'paste:'+hashText(text),kind:'paste',title:'Pasted text',number:null,text};
   closeDialog('library-dialog'); await loadDocument(descriptor);
 });
 let dragDepth=0;
-window.addEventListener('dragenter',e=>{ if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); dragDepth++; $('drop-overlay').hidden=false; } });
-window.addEventListener('dragover',e=>{ if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect='copy'; } });
+window.addEventListener('dragenter',e=>{ if (LOCAL_TEXTS && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); dragDepth++; $('drop-overlay').hidden=false; } });
+window.addEventListener('dragover',e=>{ if (LOCAL_TEXTS && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect='copy'; } });
 window.addEventListener('dragleave',e=>{ if ([...e.dataTransfer.types].includes('Files')) { dragDepth=Math.max(0,dragDepth-1); if (!dragDepth) $('drop-overlay').hidden=true; } });
-window.addEventListener('drop',e=>{ e.preventDefault(); dragDepth=0; $('drop-overlay').hidden=true; if (e.dataTransfer.files.length) importFiles(e.dataTransfer.files); });
+window.addEventListener('drop',e=>{ e.preventDefault(); dragDepth=0; $('drop-overlay').hidden=true; if (LOCAL_TEXTS && e.dataTransfer.files.length) importFiles(e.dataTransfer.files); });
 window.addEventListener('blur',()=>{ dragDepth=0; $('drop-overlay').hidden=true; });
 
 
 function buildOutline() {
   $('manuscript').querySelectorAll('.section-link').forEach(link=>link.remove());
   state.headings=[]; let section=0;
-  const els=[...$('manuscript').querySelectorAll('h1,h2,h3')].filter(el=>!el.closest('.source-passage,.source-footnotes') && (!el.closest('.footnotes') || state.settings.notes));
+  const els=[...$('manuscript').querySelectorAll('h1,h2,h3')].filter(el=>!el.closest('.source-passage,.source-footnotes') && (!el.closest('.footnotes') && !el.hasAttribute('data-notes-heading') || state.settings.notes));
   for (const heading of els) {
-    const level=Number(heading.tagName[1]); if (level<=2) section++;
-    const text=heading.dataset.headingText || heading.textContent;
+    const level=heading.closest('.parallel-section[data-format="h1"]') ? 3 : Number(heading.tagName[1]); if (level<=2) section++;
+    const text=navLabel(heading.dataset.headingText || heading.textContent);
     const number=String(section || 1).padStart(2,'0');
     if (level===2) heading.dataset.sectionNumber=number;
     const anchor=heading.dataset.sectionAnchor || heading.id;
     state.headings.push({id:anchor,text,level,number});
+    // A pointer convenience; keyboards and screen readers use the passage menu's Copy link.
     const link=document.createElement('a'); link.className='section-link'; link.setAttribute('href','#'+heading.id);
-    link.setAttribute('aria-label','Link to section: '+text); link.textContent='§'; heading.append(link);
+    link.setAttribute('aria-hidden','true'); link.tabIndex=-1; link.textContent='§'; heading.append(link);
   }
+  // The work's title is the page's one first-level heading; title lines in the text sit below it.
+  $('manuscript').querySelectorAll('h1').forEach(h=>{ if (!h.closest('.title-block')) h.setAttribute('aria-level','2'); });
   renderOutline();
 }
 function renderOutline() {
   $('toc').replaceChildren(); $('toc-count').textContent=String(state.headings.filter(h=>h.level<=2).length).padStart(2,'0');
-  if (!state.headings.length) { $('toc').append(textElement('li','This manuscript has no section headings. Read from the beginning.','toc-empty')); return; }
-  state.headings.forEach(heading=>{
+  if (!state.headings.length) { $('toc').append(textElement('li','This text has no section headings. Read from the beginning.','toc-empty')); return; }
+  // With several chapters, each chapter holds its sections and only the one being read is open.
+  const nested=state.headings.filter(h=>h.level<=2).length>1 && state.headings.some(h=>h.level===3);
+  let group=null;
+  state.headingIndex=new Map(state.headings.map((heading,index)=>[heading.id,index]));
+  state.headings.forEach((heading,index)=>{
     const li=document.createElement('li'), a=document.createElement('a');
-    if (heading.level===3) li.className='sub';
     a.href='#'+heading.id; a.dataset.target=heading.id;
     a.append(textElement('span',heading.text));
-    a.addEventListener('click',e=>{ e.preventDefault(); closeNav(false); jumpTo(heading.id); });
-    li.append(a); $('toc').append(li);
+    a.addEventListener('click',e=>{ e.preventDefault(); closeNav(false); jumpTo(heading.id,{history:'replace'}); });
+    li.append(a);
+    if (nested && heading.level<=2) { li.className='toc-chapter'; group={li,text:heading.text,list:null,index}; $('toc').append(li); return; }
+    if (heading.level===3) li.className='sub';
+    if (nested && group) {
+      if (!group.list) {
+        const list=document.createElement('ol'), toggle=document.createElement('button');
+        list.className='toc-sections'; list.id='toc-sections-'+group.index; list.hidden=true;
+        toggle.type='button'; toggle.className='toc-toggle'; toggle.setAttribute('aria-expanded','false'); toggle.setAttribute('aria-controls',list.id);
+        toggle.setAttribute('aria-label','Sections of '+group.text); toggle.append(icon('arrow'));
+        const owner=group.li; toggle.addEventListener('click',()=>setTocGroup(owner,toggle.getAttribute('aria-expanded')!=='true',true));
+        group.li.append(toggle,list); group.list=list;
+      }
+      group.list.append(li); return;
+    }
+    $('toc').append(li);
   });
   state.activeHeading=null; updateProgress();
+}
+function setTocGroup(li,open,byReader=false) {
+  const list=li.querySelector(':scope > .toc-sections'), toggle=li.querySelector(':scope > .toc-toggle'); if (!list) return;
+  list.hidden=!open; toggle.setAttribute('aria-expanded',String(open)); li.classList.toggle('open',open);
+  if (byReader) li.dataset.reader=open ? 'open' : 'closed'; else delete li.dataset.reader;
+}
+function sidebarShown() { return innerWidth>920 ? !document.body.classList.contains('focus-mode') : document.body.classList.contains('nav-open'); }
+// Keeps the current entry in view inside the contents, without moving the page.
+function revealTocEntry(link,center=false) {
+  const wrap=$('toc').closest('.toc-wrap'); if (!link || !wrap || !sidebarShown()) return;
+  const box=wrap.getBoundingClientRect(), at=link.getBoundingClientRect();
+  if (!center && at.top>=box.top+24 && at.bottom<=box.bottom-24) return;
+  wrap.scrollTop+=at.top-box.top-(center ? (wrap.clientHeight-at.height)/2 : wrap.clientHeight/3);
+}
+function followInContents(activeId) {
+  const link=$('toc').querySelector(`a[data-target="${CSS.escape(activeId || '')}"]`);
+  const chapter=link?.closest('.toc-chapter');
+  $('toc').querySelectorAll('.toc-chapter').forEach(li=>{ if (li!==chapter && li.dataset.reader!=='open') setTocGroup(li,false); });
+  if (chapter && chapter.dataset.reader!=='closed') setTocGroup(chapter,true);
+  revealTocEntry(link);
+}
+function formatMinutes(minutes) { return minutes>=60 ? `${Math.floor(minutes/60)} h ${minutes%60} min` : `${minutes} min`; }
+// The chapter around a heading, as indexes into the outline.
+function chapterOf(index) {
+  let start=index; while (start>0 && state.headings[start].level>2) start--;
+  if (state.headings[start]?.level>2) return null;
+  let end=start+1; while (end<state.headings.length && state.headings[end].level>2) end++;
+  return {start,end};
 }
 function jumpTo(id, options={}) {
   const el=$(id); if (!el) return false;
@@ -1267,12 +1638,49 @@ function jumpTo(id, options={}) {
   el.scrollIntoView({behavior:reduceMotion.matches || options.instant ? 'instant':'smooth',block:'start'});
   if (options.flash) { el.classList.remove('search-flash'); void el.offsetWidth; el.classList.add('search-flash'); }
   if (options.focus !== false) { el.setAttribute('tabindex','-1'); el.focus({preventScroll:true}); }
-  if (state.view === 'reading' && options.history !== false && state.current?.kind !== 'local' && state.current?.kind !== 'paste' && state.current?.kind !== 'specimen') updateLocation(state.current,'#'+id,false);
+  if (state.view === 'reading' && options.history !== false && linkable()) {
+    // The entry being left keeps the exact reading place, so Back returns to it.
+    if (options.history !== 'replace') syncHash();
+    updateLocation(state.current,'#'+(hashFor(el) || id),options.history === 'replace');
+  }
   return true;
 }
+// Pair IDs resolve in any case, with or without the md- prefix: #DTG-000455, #md-dtg-000455.
+function resolveTarget(raw) {
+  let id=String(raw || '').replace(/^#/,''); try { id=decodeURIComponent(id); } catch (_) {}
+  if (!id) return '';
+  for (const candidate of [id,'md-'+id,id.toLowerCase(),'md-'+id.toLowerCase()]) if ($(candidate)) return candidate;
+  return '';
+}
+// The shortest stable address for an element: a pair ID as authored, or a heading.
+function hashFor(el) {
+  const section=el?.closest?.('.parallel-section');
+  if (section?.id) return isPairedSchema(state.current?.metadata?.schema) && section.id.startsWith('md-') ? section.id.slice(3).toUpperCase() : section.id;
+  if (el?.id && !/^passage-\d+$/.test(el.id)) return el.id;
+  return state.activeHeading || '';
+}
+function linkable(entry=state.current) { return !!entry && !['local','paste','specimen'].includes(entry.kind) && /^https?:$/.test(location.protocol); }
+let hashTimer=0;
+// The address follows reading, so a copied URL or a reload lands on the passage.
+function syncHash() {
+  clearTimeout(hashTimer);
+  if (state.view!=='reading' || state.busy || !linkable()) return;
+  const hash=window.scrollY<40 ? '' : hashFor(state.place?.el);
+  const current=location.hash.replace(/^#/,'');
+  if (current===hash || hash && resolveTarget(current)===resolveTarget(hash)) return;
+  // A linked passage keeps its address while it is still where the reader is reading.
+  const named=current && $(resolveTarget(current));
+  if (rendered(named)) { const box=named.getBoundingClientRect(); if (box.top<innerHeight/2 && box.bottom>READING_LINE-40) return; }
+  try { const url=new URL(location.href); url.hash=hash; history.replaceState(history.state,'',url); } catch (_) {}
+}
+function washPassage(el) {
+  const target=el?.closest?.('.parallel-section') || el; if (!target) return;
+  target.classList.remove('arrival-wash'); void target.offsetWidth; target.classList.add('arrival-wash');
+  target.addEventListener('animationend',()=>target.classList.remove('arrival-wash'),{once:true});
+}
 function goToHash(hash, update=true) {
-  let id=hash.replace(/^#/,''); try { id=decodeURIComponent(id); } catch (_) {}
-  return jumpTo($(id) ? id : 'md-'+id,{instant:!update,history:update});
+  const id=resolveTarget(hash);
+  return id ? jumpTo(id,{instant:!update,history:update}) : false;
 }
 function updateLocation(descriptor, hash='', replace=false, view='reading') {
   if (!/^https?:$/.test(location.protocol)) return;
@@ -1300,13 +1708,15 @@ window.addEventListener('popstate', event => {
     let descriptor = itemId ? state.library.find(e => e.id === itemId) : null;
     if (!descriptor && itemId === state.current?.id) descriptor = state.current;
     if (!descriptor && params.get('work')) descriptor = collectionDescriptor(params.get('work'),params.get('file'));
-    if (!descriptor && params.get('src')) descriptor = fromURL(params.get('src'));
+    if (!descriptor && params.get('src') && LOCAL_TEXTS) descriptor = fromURL(params.get('src'));
     if (!descriptor && params.get('demo') === '1') descriptor = specimenDescriptor();
     if (!descriptor && params.get('file')) descriptor = fromProject(params.get('file'));
     if (!descriptor) { showCollection({updateURL:false}); return; }
     if (state.current?.id === descriptor.id) {
+      const wasReading=state.view==='reading';
       returnToReading({updateURL:false,focus:false});
       if (location.hash) goToHash(location.hash,false);
+      else if (wasReading) window.scrollTo({top:0,behavior:'instant'});
     } else loadDocument(descriptor,{section:location.hash,updateURL:false});
   } catch (error) { showError(error.message,false); }
 });
@@ -1321,20 +1731,55 @@ function activeLocation() {
   }
   return headings[found] || null;
 }
+const READING_LINE=105;
+// The block under the reading line. Its offset survives changes of type size,
+// measure, rotation and language far better than a section heading's does.
+function placeAtReadingLine() {
+  const main=$('manuscript'); if (state.view!=='reading' || !main || main.hidden) return null;
+  const box=main.getBoundingClientRect(); if (box.width<=0) return null;
+  const x=Math.max(1,Math.min(innerWidth-2,box.left+Math.min(box.width/2,240)));
+  for (let y=READING_LINE; y<Math.min(innerHeight,READING_LINE+90); y+=15) {
+    let el=document.elementFromPoint(x,y);
+    if (!el || !main.contains(el) || el===main) continue;
+    el=el.closest('p,li,h1,h2,h3,h4,h5,h6,blockquote,pre,table,figure,dt,dd,hr,section') || el;
+    if (!main.contains(el)) continue;
+    // A pair section's ID is part of the edition; other IDs are the nearest stable target.
+    const keyed=el.closest('section[id]') || el.closest('[id]'); const anchor=keyed && main.contains(keyed) && keyed!==main ? keyed : null;
+    return {el, offset:el.getBoundingClientRect().top, y:window.scrollY, anchor:anchor?.id || '', anchorOffset:anchor ? anchor.getBoundingClientRect().top : 0};
+  }
+  return null;
+}
+function rendered(el) { return !!el?.isConnected && el.getClientRects().length>0; }
 function currentPosition() {
-  const heading=activeLocation(); const node=heading ? $(heading.id) : $('book-header');
-  return {progress:state.progress, heading:heading?.id || '', offset:node ? node.getBoundingClientRect().top : 0, at:Date.now()};
+  const heading=activeLocation(); const node=heading ? $(heading.id) : $('book-header'), place=placeAtReadingLine();
+  return {progress:state.progress, heading:heading?.id || '', offset:node ? node.getBoundingClientRect().top : 0,
+    anchor:place?.anchor || '', anchorOffset:place?.anchorOffset || 0, label:heading ? navLabel(heading.text) : '', at:Date.now()};
+}
+// Keeps the passage being read where it is while the layout around it changes.
+function pinPlace({ifUnmoved=false}={}) {
+  const place=state.place; if (state.view!=='reading' || !place || !rendered(place.el)) return;
+  // A late font swap must not pull back a reader who has scrolled since the place was taken.
+  if (ifUnmoved && Math.abs(window.scrollY-place.y)>1) return;
+  const delta=place.el.getBoundingClientRect().top-place.offset; if (Math.abs(delta)<1) return;
+  state.restoring=true; window.scrollTo({top:Math.max(0,window.scrollY+delta),behavior:'instant'}); state.restoring=false;
 }
 function savePosition(force=false) {
   if (state.view !== 'reading' || !state.current || state.current.kind==='specimen' || state.restoring || state.busy || !state.hasMoved) return;
   if (!force && Date.now()-state.lastSave<1000) return;
-  state.lastSave=Date.now(); storageWrite('position:'+state.current.id,currentPosition());
+  // Following a link must not overwrite the place the reader left; reading on from it does.
+  if (state.holdPlace) { if (Math.abs(window.scrollY-state.holdPlace.y)<innerHeight) return; state.holdPlace=null; }
+  state.lastSave=Date.now(); const position=currentPosition();
+  storageWrite('position:'+state.current.id,position);
+  if (state.current.kind==='catalog') storageWrite('last:'+state.current.catalogId,{path:state.current.path,progress:position.progress,label:position.label,at:position.at});
 }
 function restorePosition(position) {
-  state.restoring=true;
-  const el=position.heading ? $(position.heading) : null;
-  const top=el ? window.scrollY+el.getBoundingClientRect().top-position.offset : position.progress*Math.max(0,document.documentElement.scrollHeight-innerHeight);
-  window.scrollTo({top:Math.max(0,top),behavior:'instant'}); state.restoring=false; state.hasMoved=true; updateProgress(); savePosition(true);
+  state.restoring=true; state.holdPlace=null;
+  const anchor=position.anchor ? $(position.anchor) : null, heading=position.heading ? $(position.heading) : null;
+  const top=rendered(anchor) ? window.scrollY+anchor.getBoundingClientRect().top-position.anchorOffset
+    : rendered(heading) ? window.scrollY+heading.getBoundingClientRect().top-position.offset
+    : position.progress*Math.max(0,document.documentElement.scrollHeight-innerHeight);
+  window.scrollTo({top:Math.max(0,top),behavior:'instant'}); state.restoring=false; state.hasMoved=true;
+  state.place=placeAtReadingLine(); updateProgress(); savePosition(true);
 }
 let scrollQueued=false;
 function updateProgress() {
@@ -1344,82 +1789,159 @@ function updateProgress() {
   const percent=Math.round(state.progress*100);
   $('progress-fill').style.transform=`scaleX(${state.progress})`;
   if (state.progressPercent!==percent) { state.progressPercent=percent; $('progress-label').textContent=percent+'%'; $('progress-track').setAttribute('aria-valuenow',String(percent)); }
-  const active=activeLocation();
+  const active=activeLocation(), index=active ? state.headingIndex?.get(active.id) : undefined;
+  const chapter=index!==undefined && state.headings.filter(h=>h.level<=2).length>1 ? chapterOf(index) : null;
   if (state.activeHeading!==active?.id) {
     state.activeHeading=active?.id;
     $('toc').querySelectorAll('a').forEach(a=>{ if (a.dataset.target===active?.id) a.setAttribute('aria-current','location'); else a.removeAttribute('aria-current'); });
-    $('footer-section').textContent=active?.text || state.current?.title || '';
+    const title=chapter ? state.headings[chapter.start].text : '';
+    $('footer-section').textContent=chapter && chapter.start!==index ? title+' · '+active.text : active?.text || state.current?.title || '';
+    followInContents(active?.id);
   }
-  const remaining=state.current ? percent>=99 ? 'End of manuscript' : `About ${Math.max(1,Math.ceil(state.minutes*(1-state.progress)))} min left` : 'Make yourself at home';
+  let remaining=state.current ? percent>=99 ? 'End of the text' : `About ${formatMinutes(Math.max(1,Math.ceil(state.minutes*(1-state.progress))))} left` : 'Make yourself at home';
+  if (chapter && percent<99) {
+    // Time left in this chapter, estimated from its share of the page.
+    const first=$(state.headings[chapter.start].id), next=chapter.end<state.headings.length ? $(state.headings[chapter.end].id) : null, book=$('manuscript').getBoundingClientRect();
+    if (first && book.height>0) {
+      const top=first.getBoundingClientRect().top, bottom=next ? next.getBoundingClientRect().top : book.bottom, span=Math.max(1,bottom-top);
+      const read=Math.max(0,Math.min(1,(READING_LINE-top)/span)), minutes=state.minutes*span/book.height;
+      remaining=`${formatMinutes(Math.max(1,Math.ceil(minutes*(1-read))))} left in chapter · ${formatMinutes(Math.max(1,Math.ceil(state.minutes*(1-state.progress))))} in text`;
+    }
+  }
   if ($('remaining').textContent!==remaining) $('remaining').textContent=remaining;
 }
-window.addEventListener('scroll',()=>{ if (!scrollQueued) { scrollQueued=true; requestAnimationFrame(()=>{ if (!state.restoring && !state.busy && window.scrollY>1) state.hasMoved=true; updateProgress(); savePosition(); scrollQueued=false; }); } },{passive:true});
+window.addEventListener('scroll',()=>{ if (!scrollQueued) { scrollQueued=true; requestAnimationFrame(()=>{ if (!state.restoring && !state.busy && window.scrollY>1) state.hasMoved=true; if (!state.restoring && !document.body.classList.contains('dialog-open')) { state.place=placeAtReadingLine() || state.place; clearTimeout(hashTimer); hashTimer=setTimeout(syncHash,500); } updateProgress(); savePosition(); scrollQueued=false; }); } },{passive:true});
 window.addEventListener('resize',()=>{ if (innerWidth>920) closeNav(false); syncSidebarAccess(); updateProgress(); });
-new ResizeObserver(()=>{ requestAnimationFrame(updateProgress); }).observe($('main-content'));
+let readingWidth=0;
+new ResizeObserver(entries=>{
+  // Only a change of width reflows the text; height changes come from the text itself.
+  const width=Math.round(entries[entries.length-1].contentRect.width);
+  if (width!==readingWidth) { const first=!readingWidth; readingWidth=width; if (!first) { fitNoteTails({reset:true}); pinPlace(); } }
+  requestAnimationFrame(updateProgress);
+}).observe($('main-content'));
+document.fonts?.addEventListener?.('loadingdone',()=>{ fitNoteTails({reset:true}); pinPlace({ifUnmoved:true}); });
 window.addEventListener('pagehide',()=>savePosition(true));
 document.addEventListener('visibilitychange',()=>{ if (document.hidden) savePosition(true); });
 function updateBookmarkUI() {
   state.bookmark=state.current ? storageRead('bookmark:'+state.current.id) : null;
   $('bookmark-button').classList.toggle('bookmark-set',!!state.bookmark);
-  $('bookmark-button').setAttribute('aria-pressed',String(!!state.bookmark));
-  $('bookmark-button').setAttribute('aria-label',state.bookmark ? 'Update bookmark to this position':'Bookmark this position');
+  $('bookmark-button').title=state.bookmark ? 'Move the bookmark here (B)' : 'Bookmark this place (B)';
   $('resume-button').hidden=!state.bookmark;
+  $('resume-label').textContent=state.bookmark?.label ? 'Bookmark · '+state.bookmark.label : 'Return to bookmark';
 }
 function bookmarkPosition() {
-  if (state.view !== 'reading' || !state.current || state.current.kind==='specimen') return notify('Open a manuscript to save a bookmark.');
-  const old=state.bookmark, position=currentPosition();
-  if (old && Math.abs(old.progress-position.progress)<.01) {
-    storageRemove('bookmark:'+state.current.id); updateBookmarkUI(); notify('Bookmark removed.'); return;
-  }
-  if (!storageWrite('bookmark:'+state.current.id,position)) return notify('Browser storage is unavailable. This bookmark could not be saved.');
-  updateBookmarkUI(); notify('A place to return to.', 'Remove bookmark',()=>{storageRemove('bookmark:'+state.current.id);updateBookmarkUI();});
+  if (state.view !== 'reading' || !state.current || state.current.kind==='specimen') return notify('Open a text to save a bookmark.');
+  const old=state.bookmark, position=currentPosition(), key='bookmark:'+state.current.id;
+  if (!storageWrite(key,position)) return notify('Browser storage is unavailable. This bookmark could not be saved.');
+  updateBookmarkUI(); announce(old ? 'Bookmark moved.' : 'Bookmark saved.');
+  notify(old ? 'Bookmark moved here.' : 'Bookmarked.', 'Undo',()=>{ if (old) storageWrite(key,old); else storageRemove(key); updateBookmarkUI(); });
 }
 $('bookmark-button').addEventListener('click',bookmarkPosition);
 $('resume-button').addEventListener('click',()=>{ closeNav(false); if (state.bookmark) restorePosition(state.bookmark); });
 function syncFocus() {
   const active=document.body.classList.contains('focus-mode');
   syncSidebarAccess(); $('focus-button').setAttribute('aria-pressed',String(active));
-  $('focus-button').setAttribute('aria-label',active ? 'Leave focus mode':'Enter focus mode');
 }
-function toggleFocus() { if (state.view !== 'reading') return; closeNav(false); document.body.classList.toggle('focus-mode'); syncFocus(); }
+function toggleFocus() {
+  if (state.view !== 'reading') return; closeNav(false);
+  const on=document.body.classList.toggle('focus-mode'); showChrome(false); syncFocus();
+  if (on) notify(matchMedia('(hover: none)').matches ? 'Focus mode. Scroll up for the toolbar.' : 'Focus mode. Point at the top edge for the toolbar; Escape leaves.','',null,4000);
+}
+let chromeTimer=0, chromeScroll=0;
+function showChrome(on) { clearTimeout(chromeTimer); document.body.classList.toggle('chrome-shown',!!on && document.body.classList.contains('focus-mode')); }
+document.addEventListener('mousemove',e=>{
+  if (!document.body.classList.contains('focus-mode')) return;
+  if (e.clientY<64) showChrome(true);
+  else if (document.body.classList.contains('chrome-shown') && e.clientY>120) { clearTimeout(chromeTimer); chromeTimer=setTimeout(()=>showChrome(false),700); }
+},{passive:true});
+// On touch screens, scrolling back up is the way to ask for the toolbar.
+window.addEventListener('scroll',()=>{
+  if (!document.body.classList.contains('focus-mode')) { chromeScroll=window.scrollY; return; }
+  const y=window.scrollY;
+  if (y<chromeScroll-40) { showChrome(true); chromeScroll=y; }
+  else if (y>chromeScroll+12) { if (!document.querySelector('.toolbar').contains(document.activeElement)) showChrome(false); chromeScroll=y; }
+},{passive:true});
 $('focus-button').addEventListener('click',toggleFocus);
 
 function buildSearchIndex() {
   state.search=[]; let context=state.current.title; let index=0;
   $('manuscript').querySelectorAll('h1,h2,h3,h4,p,li,td,th,pre,dt,dd,figcaption').forEach(el=>{
-    if (/^H[1-4]$/.test(el.tagName)) context=el.dataset.headingText || el.textContent.replace(/§$/,'').trim();
+    // Results are labelled in English: a source heading does not rename its passage.
+    if (/^H[1-4]$/.test(el.tagName) && !el.closest('.source-passage')) context=navLabel(el.dataset.headingText || el.textContent.replace(/§$/,'').trim());
     // Avoid duplicate hits for list items and paragraphs inside those items.
     if (el.tagName==='LI' && el.querySelector('p,li')) return;
-    const clone=el.cloneNode(true); clone.querySelectorAll('.section-link,.footnote-back,[data-reader-ui]').forEach(a=>a.remove());
-    const text=clone.textContent.replace(/\s+/g,' ').trim(); if (!text) return;
+    const clone=el.cloneNode(true); clone.querySelectorAll('.section-link,.footnote-back,.reader-note-marker,.footnote-ref,[data-reader-ui]').forEach(a=>a.remove());
+    clone.querySelectorAll('br').forEach(br=>br.replaceWith(' / '));
+    const text=clone.textContent.replace(/\s+/g,' ').replace(/^ \/ | \/ $/g,'').trim(); if (!text) return;
     if (!el.id) el.id='passage-'+(++index);
-    state.search.push({id:el.id,text,lower:text.toLocaleLowerCase(),context});
+    const form=searchIndexForm(text);
+    state.search.push({id:el.id,text,lower:form.text,map:form.map,context,lang:el.closest('[lang]')?.lang || 'en'});
   });
-  $('search-scope').textContent='In '+($('toolbar-volume').textContent || 'this manuscript');
+  $('search-scope').textContent='In '+($('toolbar-volume').textContent || 'this text');
   $('search-input').value=''; renderSearch();
 }
 function showSearch() {
-  if (state.view !== 'reading' || !state.current) return notify('Open a manuscript to search its text.','Open library',showLibrary);
+  if (state.view !== 'reading' || !state.current) return LOCAL_TEXTS ? notify('Open a text to search it.','Open library',showLibrary) : notify('Open a text from the collection to search it.');
   openDialog('search-dialog'); $('search-input').focus(); $('search-input').select(); renderSearch();
 }
 $('search-trigger').addEventListener('click',showSearch);
 let searchTimer;
 $('search-input').addEventListener('input',()=>{ clearTimeout(searchTimer); searchTimer=setTimeout(renderSearch,100); });
+// Same length as the input, so match offsets stay valid for highlighting.
+// One character's searchable form: case, Latin diacritics, curly apostrophes and the
+// Tibetan variants that are spelled more than one way (non-breaking tsheg, precomposed
+// letters and vowel signs) all fold together. Tsheg itself is never removed.
+const TIBETAN_FOLD={'\u0f0c':'\u0f0b','\u0f73':'\u0f71\u0f72','\u0f75':'\u0f71\u0f74','\u0f81':'\u0f71\u0f80'};
+function foldCharacter(c) {
+  if (TIBETAN_FOLD[c]) return TIBETAN_FOLD[c];
+  if (c==='’' || c==='‘') return "'";
+  return c.toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+function searchIndexForm(text) {
+  let out=''; const map=[];
+  for (let i=0; i<text.length;) {
+    const c=String.fromCodePoint(text.codePointAt(i)), folded=foldCharacter(c);
+    for (let k=0; k<folded.length; k++) map.push(i);
+    out+=folded; i+=c.length;
+  }
+  map.push(text.length);
+  return {text:out,map};
+}
+function searchForm(text) {
+  const folded=searchIndexForm(text).text;
+  // A typed syllable may end in a tsheg or shad that the passage spells differently.
+  const trimmed=/[\u0f00-\u0fff]/.test(folded) ? folded.replace(/[\u0f0b\u0f0d\u0f0e\u0f11\u0f14\s]+$/,'') : folded;
+  return trimmed || folded;
+}
+const SEARCH_PAGE=60;
+function searchResult(item,query) {
+  const at=item.lower.indexOf(query), from=item.map[at], to=item.map[at+query.length];
+  const start=Math.max(0,from-55), end=Math.min(item.text.length,to+115);
+  const li=document.createElement('li'), button=document.createElement('button');
+  button.append(textElement('span',item.context,'result-section'));
+  const excerpt=document.createElement('span'); excerpt.className='result-excerpt'; excerpt.lang=item.lang;
+  excerpt.append(document.createTextNode((start?'…':'')+item.text.slice(start,from)),textElement('mark',item.text.slice(from,to)),document.createTextNode(item.text.slice(to,end)+(end<item.text.length?'…':'')));
+  button.append(excerpt); button.addEventListener('click',()=>{ closeDialog('search-dialog'); jumpTo(item.id,{flash:true}); }); li.append(button);
+  return li;
+}
 function renderSearch() {
-  const query=$('search-input').value.trim().toLocaleLowerCase(); $('search-results').replaceChildren();
-  if (!query) { $('search-empty').hidden=false; $('search-empty').textContent='Search the current manuscript in English or Tibetan.'; $('search-count').textContent='Type to search'; return; }
+  const query=searchForm($('search-input').value.trim()); $('search-results').replaceChildren();
+  if (!query) { $('search-empty').hidden=false; $('search-empty').textContent='Search this text in English or Tibetan.'; $('search-count').textContent='Type to search'; return; }
   const matches=state.search.filter(item=>item.lower.includes(query));
-  $('search-count').textContent=`${matches.length} passage${matches.length===1?'':'s'}${matches.length>60?' · first 60 shown':''}`;
+  $('search-count').textContent=`${matches.length.toLocaleString('en')} passage${matches.length===1?'':'s'}`;
   $('search-empty').hidden=!!matches.length;
   if (!matches.length) $('search-empty').textContent='No matching passages. Try a shorter word or a Tibetan syllable.';
-  for (const item of matches.slice(0,60)) {
-    const at=item.lower.indexOf(query), start=Math.max(0,at-55), end=Math.min(item.text.length,at+query.length+115);
-    const li=document.createElement('li'), button=document.createElement('button');
-    button.append(textElement('span',item.context,'result-section'));
-    const excerpt=document.createElement('span'); excerpt.className='result-excerpt';
-    excerpt.append(document.createTextNode((start?'…':'')+item.text.slice(start,at)),textElement('mark',item.text.slice(at,at+query.length)),document.createTextNode(item.text.slice(at+query.length,end)+(end<item.text.length?'…':'')));
-    button.append(excerpt); button.addEventListener('click',()=>{ closeDialog('search-dialog'); jumpTo(item.id,{flash:true,history:false}); }); li.append(button); $('search-results').append(li);
-  }
+  let shown=0;
+  const more=()=>{
+    $('search-results').querySelector('.search-more')?.remove();
+    const page=matches.slice(shown,shown+SEARCH_PAGE); shown+=page.length;
+    const first=searchResult(page[0],query); $('search-results').append(first,...page.slice(1).map(item=>searchResult(item,query)));
+    if (shown<matches.length) {
+      const li=document.createElement('li'), button=textElement('button',`Show ${Math.min(SEARCH_PAGE,matches.length-shown)} more of ${(matches.length-shown).toLocaleString('en')}`,'search-more-button');
+      li.className='search-more'; button.type='button'; button.addEventListener('click',()=>{ const next=shown; more(); $('search-results').children[next]?.querySelector('button')?.focus(); }); li.append(button); $('search-results').append(li);
+    }
+  };
+  if (matches.length) more();
 }
 $('search-input').addEventListener('keydown',e=>{
   if (e.key==='ArrowDown') { e.preventDefault(); $('search-results').querySelector('button')?.focus(); }
@@ -1434,38 +1956,48 @@ $('search-results').addEventListener('keydown',e=>{
 function applySettings(persist=true) {
   const settings=state.settings;
   settings.citations=settings.citations !== false;
-  if (!['paper','mist','ink'].includes(settings.theme)) settings.theme='paper';
+  if (!['auto','paper','mist','ink'].includes(settings.theme)) settings.theme='auto';
+  settings.tibetan=Math.max(90,Math.min(140,Math.round((Number(settings.tibetan)||100)/5)*5));
   settings.size=Math.max(16,Math.min(28,Number(settings.size)||defaults.size));
   settings.measure=[620,720,840].includes(Number(settings.measure)) ? Number(settings.measure):720;
   settings.leading=Math.max(1.5,Math.min(2.2,Number(settings.leading)||1.88));
-  document.documentElement.dataset.theme=settings.theme;
-  document.documentElement.style.setProperty('--body-size',settings.size+'px');
-  document.documentElement.style.setProperty('--measure',settings.measure+'px');
-  document.documentElement.style.setProperty('--leading',String(settings.leading));
-  document.querySelector('meta[name="theme-color"]').content=settings.theme==='ink' ? '#202824':settings.theme==='mist' ? '#edf0ed':'#f5f1e8';
+  if (settings.theme==='auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.dataset.theme=settings.theme;
+  document.documentElement.style.setProperty('--user-bo-scale',String(settings.tibetan/100));
+  document.documentElement.style.setProperty('--user-size',settings.size+'px');
+  document.documentElement.style.setProperty('--user-measure',settings.measure+'px');
+  document.documentElement.style.setProperty('--user-leading',String(settings.leading));
+  const [light,dark]=document.querySelectorAll('meta[name="theme-color"]'), chosen={paper:'#f5f1e8',mist:'#edf0ed',ink:'#202824'}[settings.theme];
+  if (light && dark) { light.content=chosen || '#f5f1e8'; dark.content=chosen || '#202824'; }
   $('font-size').value=settings.size; $('size-value').textContent=settings.size+' px';
-  $('line-height').value=settings.leading; previewSliders();
+  $('line-height').value=settings.leading; $('tibetan-size').value=settings.tibetan; previewSliders();
   $$('.theme-choice').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.theme===settings.theme)));
   $$('[data-measure]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.measure)===settings.measure)));
   $('auto-citations').checked=settings.citations;setNotesVisible(settings.notes,false);
+  settings.shortcuts=settings.shortcuts!==false; $('single-key-shortcuts').checked=settings.shortcuts;
   if (persist) storageWrite('settings',settings);
-  rebuildCitationLayers();
+  rebuildCitationLayers(); fitNoteTails({reset:true}); pinPlace();
 }
-$('settings-trigger').addEventListener('click',()=>openDialog('settings-dialog'));
+$('settings-trigger').addEventListener('click',()=>{ if ($('settings-dialog').open) closeSettings(); else openDialog('settings-dialog'); });
+function closeSettings() { if (!$('settings-dialog').open) return; closeDialog('settings-dialog'); $('settings-trigger').focus({preventScroll:true}); }
+// A panel is not modal, so Escape is handled here rather than by the browser.
+$('settings-dialog').addEventListener('keydown',e=>{ if (e.key==='Escape') { e.preventDefault(); e.stopPropagation(); closeSettings(); } });
 $$('.theme-choice').forEach(b=>b.addEventListener('click',()=>{state.settings.theme=b.dataset.theme;applySettings();}));
 $$('[data-measure]').forEach(b=>b.addEventListener('click',()=>{state.settings.measure=Number(b.dataset.measure);applySettings();}));
 // Each value change relays out the whole book (hundreds of milliseconds on a phone),
 // so dragging previews the value and the book is set once, on release.
 function previewSliders() {
   const size=Number($('font-size').value), leading=Number($('line-height').value);
-  $('size-value').textContent=size+' px'; $('leading-value').textContent=leading.toFixed(2);
+  $('size-value').textContent=size+' px'; $('leading-value').textContent=leading.toFixed(2); $('tibetan-value').textContent=$('tibetan-size').value+'%';
   const preview=document.querySelector('.settings-preview'); if (preview) { preview.style.fontSize=size+'px'; preview.style.lineHeight=String(leading); }
 }
 $('font-size').addEventListener('input',previewSliders);
 $('line-height').addEventListener('input',previewSliders);
 $('font-size').addEventListener('change',e=>{state.settings.size=Number(e.target.value);applySettings();});
 $('line-height').addEventListener('change',e=>{state.settings.leading=Number(e.target.value);applySettings();});
+$('tibetan-size').addEventListener('input',previewSliders);
+$('tibetan-size').addEventListener('change',e=>{state.settings.tibetan=Number(e.target.value);applySettings();});
 $('auto-citations').addEventListener('change',e=>{state.settings.citations=e.target.checked;applySettings();});
+$('single-key-shortcuts').addEventListener('change',e=>{state.settings.shortcuts=e.target.checked;applySettings();syncSourceHint();});
 $('reset-settings').addEventListener('click',()=>{state.settings={...defaults};applySettings();});
 
 function handleManuscriptClick(e) {
@@ -1477,17 +2009,15 @@ function handleManuscriptClick(e) {
     let name=path.split('/').pop(); try { name=decodeURIComponent(name); } catch (_) {}
     const target=state.library.find(item=>item.filename===name);
     if (target) loadDocument(target,{section:section ? '#'+section:''});
-    else notify('Open '+name+' in the library first. Local folders are not read automatically.','Open files',openFilePicker);
+    else if (LOCAL_TEXTS) notify('Open '+name+' in the library first. Local folders are not read automatically.','Open files',openFilePicker);
     return;
   }
   if (a.dataset.footnote) {
     const note=$(href.slice(1)); if (!note) return;
-    e.preventDefault(); state.noteTarget=note.id;
-    $('note-title').textContent='Note '+a.dataset.footnote;
-    const clone=note.cloneNode(true); clone.querySelectorAll('.footnote-back').forEach(el=>el.remove());
-    clone.removeAttribute('id'); clone.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
-    $('note-content').replaceChildren(...clone.childNodes); openDialog('note-dialog'); return;
+    e.preventDefault(); showFootnote(note,'Note '+a.dataset.footnote); return;
   }
+  // Editorial and earlier translation notes open beside the text instead of replacing it.
+  if (EDITORIAL_NOTE.test(href)) { e.preventDefault(); showEditorialNote(href); return; }
   if (href.startsWith('#')) { e.preventDefault(); goToHash(href); return; }
   try {
     const url=new URL(href);
@@ -1504,18 +2034,117 @@ function handleManuscriptClick(e) {
 }
 $('manuscript').addEventListener('click',handleManuscriptClick);
 
-let selectedPassages=[],selectedCopy='',selectionLanguage=false,selectionScroll=0;
+let selectedPassages=[],selectedPairs=[],selectedCopy='',selectedHTML='',selectionLanguage=false,selectionScroll=0,menuReturn=null;
+const dockedMenu=()=>matchMedia('(hover: none)').matches;
+// What a reader sees, without note markers, section links or interface labels.
+// Editorial brackets are authored text, so they return even where the page hides them.
+function cleanFragment(fragment) {
+  fragment.querySelectorAll('.reader-note-marker,.section-link,.footnote-back,[data-reader-ui],.footnote-ref').forEach(el=>el.remove());
+  fragment.querySelectorAll('.ap-br').forEach(el=>el.replaceWith(el.textContent));
+  fragment.querySelectorAll('[hidden]').forEach(el=>el.remove());
+  return fragment;
+}
+function renderClipboard(fragment) {
+  const box=document.createElement('div');box.setAttribute('aria-hidden','true');box.style.cssText='position:fixed;left:-10000px;top:0;width:640px';
+  box.append(fragment);document.body.append(box);
+  const text=box.innerText.replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+  box.querySelectorAll('*').forEach(el=>{for(const name of [...el.getAttributeNames()])if(name!=='lang' && name!=='href')el.removeAttribute(name);});
+  const html=box.innerHTML;box.remove();return {text,html};
+}
+function passageClip(pair,side=pair.sourceVisible?'source':'english') {
+  const clone=pair[side].cloneNode(true);clone.removeAttribute('hidden');
+  const fragment=document.createDocumentFragment();fragment.append(clone);return renderClipboard(cleanFragment(fragment));
+}
+async function writeClipboard(plain,html='') {
+  if (html && window.ClipboardItem && navigator.clipboard?.write) {
+    try { await navigator.clipboard.write([new ClipboardItem({'text/plain':new Blob([plain],{type:'text/plain'}),'text/html':new Blob([html],{type:'text/html'})})]); return; } catch {}
+  }
+  if (navigator.clipboard?.writeText) { try { await navigator.clipboard.writeText(plain); return; } catch {} }
+  const listener=event=>{event.clipboardData.setData('text/plain',plain);if(html)event.clipboardData.setData('text/html',html);event.preventDefault();};
+  document.addEventListener('copy',listener);const ok=document.execCommand('copy');document.removeEventListener('copy',listener);
+  if (!ok) throw new Error('Copy unavailable');
+}
+// Pair IDs are not in reading order, so a range is named by its first and last passage.
+function citedPlace(pairs) {
+  const ids=pairs.map(pair=>hashFor(pair.section)).filter(Boolean);
+  if (ids.length) return {label:ids.length===1 ? ids[0] : ids[0]+'–'+ids[ids.length-1],hash:ids[0]};
+  const heading=activeLocation();return {label:heading ? navLabel(heading.text) : '',hash:heading?.id || ''};
+}
+function placeURL(hash) { const url=new URL(location.href);url.hash=hash || '';return url.href; }
+function editionLine(entry=state.current) {
+  const m=entry?.metadata || {}, parts=[];
+  if (m['paired-edition']) parts.push('paired edition '+m['paired-edition']);
+  if (m['translation-edition']) parts.push('translation '+m['translation-edition']);
+  if (m['source-edition']) parts.push('source '+m['source-edition']);
+  if (!parts.length && workIdentity(entry).edition) parts.push('edition '+workIdentity(entry).edition);
+  return parts.join(' · ');
+}
+// A citation carries the selected words, the same passages in the other language,
+// the work, the passage IDs and the edition, as plain text and as rich text.
+function buildCitation() {
+  const entry=state.current, identity=workIdentity(entry), title=identity.work || readingLabel(entry), original=identity.chinese;
+  const place=citedPlace(selectedPairs), url=linkable() ? placeURL(place.hash) : '', edition=editionLine();
+  const inSource=selectedPairs.length>0 && selectedPairs.every(pair=>pair.sourceVisible);
+  const other=selectedPairs.filter(pair=>!pair.emptySource).map(pair=>passageClip(pair,inSource?'english':'source'));
+  const quoted=inSource ? selectedCopy : '“'+selectedCopy+'”';
+  const credit=[title+(original ? ` (${original})` : ''),place.label].filter(Boolean).join(', ')+'.';
+  const plain=[quoted,...(other.length ? [other.map(item=>item.text).join('\n\n')] : []),'— '+[credit,edition ? edition.charAt(0).toUpperCase()+edition.slice(1)+'.' : '',url].filter(Boolean).join(' ')].join('\n\n');
+  const root=document.createElement('div');
+  const first=document.createElement('blockquote');first.lang=inSource ? (entry.sourceLanguage || 'bo') : 'en';first.innerHTML=selectedHTML || '';if(!selectedHTML)first.textContent=selectedCopy;root.append(first);
+  if (other.length) { const second=document.createElement('blockquote');second.lang=inSource ? 'en' : (entry.sourceLanguage || 'bo');second.innerHTML=other.map(item=>item.html).join('');root.append(second); }
+  const line=document.createElement('p');line.append('— ');const cite=document.createElement('cite');cite.textContent=title;line.append(cite);
+  if (original) { const span=document.createElement('span');span.lang=entry.sourceLanguage || 'bo';span.textContent=original;line.append(' (',span,')'); }
+  line.append((place.label ? ', '+place.label : '')+'.');
+  if (edition) line.append(' '+edition.charAt(0).toUpperCase()+edition.slice(1)+'.');
+  if (url) { const link=document.createElement('a');link.href=url;link.textContent=url;line.append(' ',link); }
+  root.append(line);
+  return {plain,html:root.innerHTML,url,label:place.label,title};
+}
+function correctionURL() {
+  const repository=state.current?.kind==='catalog' ? catalog.get(state.current.catalogId)?.repository : '';
+  if (!repository || !/^[\w.-]+\/[\w.-]+$/.test(repository)) return '';
+  const place=citedPlace(selectedPairs), edition=editionLine();
+  const body=[`Passage: ${place.label || 'unknown'}`,edition ? `Edition: ${edition}` : '',linkable() ? `Link: ${placeURL(place.hash)}` : '','','Text as shown:','',selectedCopy.split('\n').map(line=>'> '+line).join('\n'),'','Suggested correction:',''].filter((line,index,lines)=>line!=='' || lines[index-1]!=='' ).join('\n');
+  return `https://github.com/${repository}/issues/new?title=${encodeURIComponent('Correction: '+(place.label || 'passage'))}&body=${encodeURIComponent(body.slice(0,6000))}`;
+}
+function activePair() {
+  const pairs=state.parallel?.pairs, sections=state.parallel?.sections; if (!pairs?.length) return null;
+  let section=placeAtReadingLine()?.el?.closest('.parallel-section');
+  if (!section) {
+    // On a chapter heading or in a gap: the first passage starting below the reading line.
+    let low=0, high=sections.length;
+    while (low<high) { const mid=(low+high)>>1; if (sections[mid].getBoundingClientRect().top<READING_LINE) low=mid+1; else high=mid; }
+    section=sections[low]?.getBoundingClientRect().top<innerHeight ? sections[low] : sections[low-1];
+  }
+  return pairs.find(pair=>pair.section===section) || null;
+}
+function toggleActivePassage() {
+  if (state.view!=='reading') return;
+  const pair=activePair();
+  if (!pair || pair.emptySource) { announce(`This passage has no ${sourceLanguageLabel()}.`); return; }
+  pair.show(!pair.sourceVisible,true);
+  pair.section.setAttribute('tabindex','-1'); pair.section.focus({preventScroll:true});
+  announce(`${pair.sourceVisible?sourceLanguageLabel():'English'} shown for this passage.`);
+}
 function closeSelectionMenu(){ if ($('selection-menu').hidden && !selectedPassages.length) return; $('selection-menu').hidden=true;selectedPassages=[]; }
 function showSelectionMenu(x,y,focus=false) {
   const selection=window.getSelection();if(!selection || selection.isCollapsed || !selection.rangeCount)return false;
   const range=selection.getRangeAt(0),article=$('manuscript');
   if(!article.contains(range.startContainer) || !article.contains(range.endContainer))return false;
-  selectedCopy=selection.toString();if(!selectedCopy.trim())return false;
-  selectedPassages=state.parallel?.pairsForRange(range) || [];
+  if(!selection.toString().trim())return false;
+  const clip=renderClipboard(cleanFragment(range.cloneContents()));
+  menuReturn=null;return openPassageMenu(state.parallel?.pairsForRange(range) || [],clip,x,y,focus);
+}
+function openPassageMenu(pairs,clip,x,y,focus=false) {
+  selectedCopy=clip.text;selectedHTML=clip.html;selectedPairs=pairs;selectedPassages=pairs.filter(pair=>!pair.emptySource);
+  $('selection-link').hidden=!linkable();$('selection-share').hidden=!(dockedMenu() && navigator.share && linkable());
+  $('selection-correction').hidden=!correctionURL();
   selectionLanguage=selectedPassages.length>0 && !selectedPassages.every(pair=>pair.sourceVisible);
   const language=$('selection-language');language.hidden=!selectedPassages.length;language.textContent='Show '+(selectionLanguage?sourceLanguageLabel():'English');
-  selectionScroll=scrollY;const menu=$('selection-menu');menu.hidden=false;menu.style.left='0px';menu.style.top='0px';
-  const bounds=menu.getBoundingClientRect();menu.style.left=Math.max(8,Math.min(x,innerWidth-bounds.width-8))+'px';menu.style.top=Math.max(8,Math.min(y,innerHeight-bounds.height-8))+'px';
+  selectionScroll=scrollY;const menu=$('selection-menu'),wasHidden=menu.hidden;menu.hidden=false;
+  // On touch screens the menu docks above the footer, clear of the system's own selection callout.
+  if(dockedMenu()){menu.style.left='';menu.style.top='';if(wasHidden)announce('Selection actions are above the footer.');}
+  else{menu.style.left='0px';menu.style.top='0px';const bounds=menu.getBoundingClientRect();menu.style.left=Math.max(8,Math.min(x,innerWidth-bounds.width-8))+'px';menu.style.top=Math.max(8,Math.min(y,innerHeight-bounds.height-8))+'px';}
   if(focus)$('selection-copy').focus({preventScroll:true});return true;
 }
 $('manuscript').addEventListener('contextmenu',event=>{
@@ -1524,7 +2153,14 @@ $('manuscript').addEventListener('contextmenu',event=>{
 document.addEventListener('keydown',event=>{
   if(!event.target.matches('input,textarea,select,[contenteditable="true"]') && (event.key==='ContextMenu' || event.shiftKey && event.key==='F10')){
     const selection=window.getSelection(),rect=selection?.rangeCount?selection.getRangeAt(0).getBoundingClientRect():null;
-    if(rect && showSelectionMenu(rect.left,rect.bottom,true))event.preventDefault();
+    if(rect && showSelectionMenu(rect.left,rect.bottom,true)){event.preventDefault();return;}
+    // Without a selection, the menu acts on the passage being read.
+    const pair=state.view==='reading' ? activePair() : null;
+    if(pair){
+      event.preventDefault();const box=pair.section.getBoundingClientRect();menuReturn=pair.section;
+      openPassageMenu([pair],passageClip(pair),box.left,Math.max(box.top,READING_LINE)+4,true);
+      announce('Passage menu.');
+    }
   }
 });
 $('selection-language').addEventListener('click',()=>{
@@ -1533,21 +2169,46 @@ $('selection-language').addEventListener('click',()=>{
   const returnOffset=!selectionLanguage?first?.englishScrollOffset:undefined;
   closeSelectionMenu();window.getSelection()?.removeAllRanges();
   // Each non-silent switch forces a whole-book layout; switch silently and measure once.
-  pairs.forEach(pair=>pair.show(selectionLanguage,false,true)); updateProgress();
+  pairs.forEach(pair=>pair.show(selectionLanguage,false,true)); fitNoteTails(); updateProgress(); rememberSwitches();
   if(returnOffset!==undefined){window.scrollTo({top:scrollY+first.section.getBoundingClientRect().top+returnOffset,behavior:'instant'});delete first.englishScrollOffset;}
   else if(first && first.section.getBoundingClientRect().bottom<$('toolbar-volume').getBoundingClientRect().bottom+30)first.section.scrollIntoView({block:'start',behavior:'instant'});
   announce((selectionLanguage?sourceLanguageLabel():'English')+' shown for the selected passage'+(pairs.length===1?'': 's')+'.');
+  if(menuReturn){menuReturn.setAttribute('tabindex','-1');menuReturn.focus({preventScroll:true});menuReturn=null;}
 });
-$('selection-copy').addEventListener('click',async()=>{
-  const text=selectedCopy;closeSelectionMenu();
-  try {
-    if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(text);
-    else {const area=document.createElement('textarea');area.value=text;area.style.cssText='position:fixed;opacity:0';document.body.append(area);area.select();if(!document.execCommand('copy'))throw new Error('Copy unavailable');area.remove();}
-    announce('Copied.');
-  } catch {notify('Copy was unavailable. Use your browser’s Copy command.');}
+function menuDone() { const target=menuReturn;closeSelectionMenu();if(target){target.setAttribute('tabindex','-1');target.focus({preventScroll:true});menuReturn=null;} }
+async function copyFromMenu(plain,html,message) {
+  menuDone();
+  try { await writeClipboard(plain,html); announce(message); if (message!=='Copied.') notify(message); }
+  catch { notify('Copy was unavailable. Use your browser’s Copy command.'); }
+}
+$('selection-copy').addEventListener('click',()=>copyFromMenu(selectedCopy,selectedHTML,'Copied.'));
+$('selection-cite').addEventListener('click',()=>{ const cite=buildCitation(); copyFromMenu(cite.plain,cite.html,'Copied with citation.'); });
+$('selection-link').addEventListener('click',()=>{ const place=citedPlace(selectedPairs), url=placeURL(place.hash); copyFromMenu(url,`<a href="${url.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}">${(place.label || url).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</a>`,'Link copied.'); });
+$('selection-share').addEventListener('click',async()=>{
+  const cite=buildCitation();menuDone();
+  try { await navigator.share({title:cite.title,text:(selectedPairs.every(pair=>pair.sourceVisible) && selectedPairs.length ? selectedCopy : '“'+selectedCopy+'”')+' — '+cite.title+(cite.label ? ', '+cite.label : ''),url:cite.url}); }
+  catch (error) { if (error?.name!=='AbortError') notify('Sharing was unavailable.'); }
+});
+$('selection-correction').addEventListener('click',()=>{ const url=correctionURL();menuDone();if(url)window.open(url,'_blank','noopener,noreferrer'); });
+// The browser's own Copy also leaves note markers and section links behind.
+$('manuscript').addEventListener('copy',event=>{
+  const selection=window.getSelection();if(!selection?.rangeCount || selection.isCollapsed || !event.clipboardData)return;
+  const range=selection.getRangeAt(0),raw=range.cloneContents();
+  if(!$('manuscript').contains(range.commonAncestorContainer) && !$('manuscript').contains(range.startContainer))return;
+  if(!raw.querySelector('.reader-note-marker,.section-link,.footnote-back,[data-reader-ui],.ap-br'))return;
+  const clip=renderClipboard(cleanFragment(raw));event.clipboardData.setData('text/plain',clip.text);event.clipboardData.setData('text/html',clip.html);event.preventDefault();
 });
 document.addEventListener('pointerdown',event=>{if(!$('selection-menu').contains(event.target))closeSelectionMenu();});
-window.addEventListener('scroll',()=>{if(Math.abs(scrollY-selectionScroll)>1)closeSelectionMenu();},{passive:true});
+window.addEventListener('scroll',()=>{if(!dockedMenu() && Math.abs(scrollY-selectionScroll)>1)closeSelectionMenu();},{passive:true});
+let selectionTimer;
+document.addEventListener('selectionchange',()=>{
+  if(!dockedMenu() || state.view!=='reading')return;
+  clearTimeout(selectionTimer);selectionTimer=setTimeout(()=>{
+    const selection=window.getSelection();
+    if(selection?.rangeCount && !selection.isCollapsed && $('manuscript').contains(selection.anchorNode))showSelectionMenu(0,0);
+    else if(!$('selection-menu').contains(document.activeElement))closeSelectionMenu();
+  },150);
+});
 window.addEventListener('resize',closeSelectionMenu);
 $('selection-menu').addEventListener('keydown',event=>{
   if(event.key==='Escape'){event.preventDefault();closeSelectionMenu();$('manuscript').focus({preventScroll:true});return;}
@@ -1562,16 +2223,113 @@ $('manuscript').addEventListener('touchend',()=>{
 $('book-header').addEventListener('click',handleManuscriptClick);
 $('note-jump').addEventListener('click',()=>{closeDialog('note-dialog');if(state.noteTarget)jumpTo(state.noteTarget,{flash:true});});
 $('note-content').addEventListener('click',e=>{
-  const a=e.target.closest('a[href^="#"]'); if (!a) return;
+  const a=e.target.closest('a[href]'); if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button!==0) return;
+  if (a.dataset.noteTarget) { e.preventDefault(); const note=$(a.dataset.noteTarget); if (note) showFootnote(note,'Note '+(note.dataset.note || '')); return; }
+  if (a.dataset.editorialNote) { e.preventDefault(); showEditorialNote(a.dataset.editorialNote); return; }
+  if (!a.getAttribute('href').startsWith('#')) return;
   e.preventDefault(); const hash=a.getAttribute('href');closeDialog('note-dialog');goToHash(hash);
 });
+const EDITORIAL_NOTE=/(?:^|\/)(?:LEGACY-)?NOTES\.md#[^#?\s]+$/i;
+// Repository links read better as GitHub pages than as raw files.
+function githubPage(href) {
+  try { const url=new URL(href); if (url.hostname!=='raw.githubusercontent.com') return href; const [owner,repo,ref,...path]=url.pathname.slice(1).split('/'); return `https://github.com/${owner}/${repo}/blob/${ref}/${path.join('/')}${url.hash}`; }
+  catch { return href; }
+}
+// Note files are read from the raw file even when a link names its GitHub page.
+function rawFile(href) {
+  const url=new URL(href); const match=url.hostname==='github.com' && /^\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/.exec(url.pathname);
+  return match ? `https://raw.githubusercontent.com/${match[1]}/${match[2]}/${match[3]}/${match[4]}` : url.href.split('#')[0];
+}
+// Golden-source notes are named by their label (G-U00002) in other files.
+function footnoteByLabel(label) {
+  for (const note of $('manuscript').querySelectorAll('.footnotes li[id]')) {
+    const lead=note.querySelector('strong')?.textContent.trim() || '';
+    if (lead.toUpperCase().startsWith(label.toUpperCase()+' ') || lead.toUpperCase()===label.toUpperCase()) return note;
+  }
+  return null;
+}
+function prepareNoteLinks(container) {
+  container.querySelectorAll('a[href]').forEach(link=>{
+    const href=link.getAttribute('href');
+    if (EDITORIAL_NOTE.test(href)) { link.dataset.editorialNote=href; link.removeAttribute('target'); return; }
+    const golden=/(?:^|\/)ENDNOTES\.md#(g-u\d+)$/i.exec(href), note=golden && footnoteByLabel(golden[1]);
+    if (note) { link.dataset.noteTarget=note.id; link.removeAttribute('target'); return; }
+    if (!href.startsWith('#')) link.href=githubPage(href);
+  });
+}
+// A golden critical note is a bold title, a comment and labelled fields. The comment and
+// its confidence stay in view; sources and review history sit in a disclosure.
+const NOTE_PRIMARY=/^(?:confidence \/ limit|earlier translation notes)$/i;
+function noteLabel(block) {
+  const first=block.firstElementChild;
+  if (block.tagName!=='P' || first?.tagName!=='STRONG') return '';
+  if ([...block.childNodes].find(node=>node.nodeType===1 || node.textContent.trim())!==first) return '';
+  const label=first.textContent.trim(); return label.endsWith(':') ? label.slice(0,-1).trim() : '';
+}
+function structureNote(container) {
+  const blocks=[...container.children], fields=blocks.filter(noteLabel);
+  if (fields.length<3) return '';
+  let title='';
+  const head=blocks[0];
+  if (head?.tagName==='P' && head.children.length===1 && head.firstElementChild.tagName==='STRONG' && head.textContent.trim()===head.firstElementChild.textContent.trim()) { title=head.textContent.trim(); head.remove(); }
+  const list=document.createElement('dl');
+  for (const block of fields) {
+    const label=noteLabel(block);
+    block.firstElementChild.remove(); if (block.firstChild?.nodeType===3) block.firstChild.data=block.firstChild.data.replace(/^\s+/,'');
+    if (NOTE_PRIMARY.test(label)) { block.classList.add('note-field'); block.prepend(textElement('span',label,'note-field-label')); continue; }
+    const value=document.createElement('dd'); value.append(...block.childNodes);
+    list.append(textElement('dt',label),value); block.remove();
+  }
+  if (list.children.length) { const details=document.createElement('details'); details.className='note-provenance'; details.append(textElement('summary','Sources and review'),list); container.append(details); }
+  return title;
+}
+function showNoteDialog(title,nodes,{target=null,source=''}={}) {
+  state.noteTarget=target;
+  const box=document.createElement('div'); box.append(...nodes);
+  const structured=structureNote(box); prepareNoteLinks(box);
+  $('note-title').textContent=structured || title;
+  $('note-content').replaceChildren(...box.childNodes); $('note-content').scrollTop=0;
+  $('note-jump').hidden=!target; $('note-source').hidden=!source; if (source) $('note-source').href=source;
+  openDialog('note-dialog');
+}
+function showFootnote(note,title) {
+  const clone=note.cloneNode(true); clone.querySelectorAll('.footnote-back').forEach(el=>el.remove());
+  clone.removeAttribute('id'); clone.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
+  showNoteDialog(title,[...clone.childNodes],{target:note.id});
+}
+const noteFiles=new Map();
+async function showEditorialNote(href) {
+  let url; try { url=new URL(href,state.current?.sourceURL || location.href); } catch { return; }
+  const id=decodeURIComponent(url.hash.slice(1)), label=id.toUpperCase(), file=rawFile(url.href), page=githubPage(url.href);
+  showNoteDialog(label,[textElement('p','Opening the note…','note-loading')],{source:page});
+  try {
+    if (!noteFiles.has(file)) noteFiles.set(file,fetchText(file).then(result=>parseMarkdown(typeof result==='string' ? result : result.text)).then(compiled=>safeDOM(compiled.html,file)));
+    const root=await noteFiles.get(file), anchor=root.querySelector(`[id="${CSS.escape('md-'+id)}"]`);
+    if (!$('note-dialog').open || $('note-source').href!==page) return;
+    if (!anchor) { showNoteDialog(label,[textElement('p','This note was not found in its file. It can still be read on GitHub.')],{source:page}); return; }
+    // The note runs from its anchor (an empty anchor or its own heading) to the next note.
+    const heading=/^H[1-6]$/.test(anchor.tagName) ? anchor : null;
+    const start=heading || (anchor.closest('p') && !anchor.closest('p').textContent.trim() ? anchor.closest('p') : anchor);
+    const nodes=[]; let title=heading ? heading.textContent.replace(/§$/,'').trim() || label : label;
+    const level=heading ? Number(heading.tagName[1]) : 2;
+    for (let node=start.nextSibling; node; node=node.nextSibling) {
+      if (node.nodeType===3 && !node.textContent.trim()) continue;
+      if (node.nodeType===1 && (/^H[1-6]$/.test(node.tagName) && Number(node.tagName[1])<=level && nodes.length || node.querySelector?.('a[id]:not([href])') && !node.textContent.trim())) break;
+      if (node.nodeType===1 && /^H[1-3]$/.test(node.tagName) && !nodes.length) { title=node.textContent.replace(/§$/,'').trim(); continue; }
+      nodes.push(node.cloneNode(true));
+    }
+    nodes.forEach(node=>{ if (node.nodeType===1) { node.removeAttribute('id'); node.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id')); } });
+    showNoteDialog(title,nodes,{source:page});
+  } catch (error) {
+    noteFiles.delete(file);
+    if ($('note-dialog').open) showNoteDialog(label,[textElement('p','The note could not be reached just now. It can still be read on GitHub.')],{source:page});
+  }
+}
 
 function showSource() {
   if (!state.current) {
-    $('source-textarea').value='No manuscript is loaded yet.';
-    $('source-description').textContent='Open a manuscript to view its original Markdown and export a reading copy.';
+    $('source-description').textContent='Open a text to save or print a reading copy.';
   } else {
-    $('source-textarea').value=state.current.text;
     $('source-description').textContent=state.current.kind==='specimen' ? 'Typography specimen only. This is not a source text or translation.' : state.current.filename || state.current.path || state.current.title;
   }
   if (state.current?.revision) $('source-description').textContent += ' · File revision '+state.current.revision;
@@ -1589,19 +2347,21 @@ function download(content,filename,type) {
 }
 $('download-markdown').addEventListener('click',()=>{
   if (!state.current) return;
-  const name=state.current.filename || state.current.path?.split('/').pop() || 'manuscript.md';
+  const name=state.current.filename || state.current.path?.split('/').pop() || 'text.md';
   download(state.current.text,name,'text/markdown;charset=utf-8');
 });
 $('export-reader').addEventListener('click',()=>{
   if (!state.current) return;
   const payload={title:state.current.title,text:state.current.text,number:state.current.number || null,
     path:state.current.path || null,sourceURL:state.current.sourceURL || null,githubURL:state.current.githubURL || null,
-    originalKind:state.current.kind,workTitle:state.current.workTitle || '',chineseTitle:state.current.chineseTitle || '',originalTitle:state.current.originalTitle || '',sourceText:state.current.sourceText || '',sourceDescriptor:state.current.sourceDescriptor || null,sourceLanguage:state.current.sourceLanguage || 'bo',sectionMap:state.current.sectionMap || [],revision:state.current.revision || ''};
+    originalKind:state.current.kind,readingTitle:readingLabel(state.current),restricted:isRestricted(state.current),workTitle:state.current.workTitle || '',chineseTitle:state.current.chineseTitle || '',originalTitle:state.current.originalTitle || '',sourceText:state.current.sourceText || '',sourceDescriptor:state.current.sourceDescriptor || null,sourceLanguage:state.current.sourceLanguage || 'bo',sectionMap:state.current.sectionMap || [],revision:state.current.revision || ''};
   const escaped=JSON.stringify(payload).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026');
   const copy=appTemplate.replace(/(<script type="application\/json" id="embedded-manuscript">)[\s\S]*?(<\/script>)/,(_,open,close)=>open+escaped+close);
-  const name=state.current.filename?.replace(/\.[^.]+$/,'') || (state.current.number ? 'part-'+String(state.current.number).padStart(2,'0'):'manuscript');
+  // Named after the work, so a saved copy is recognisable among downloads.
+  const slug=readingLabel(state.current).normalize('NFKD').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,'-').replace(/^-+|-+$/g,'').slice(0,80);
+  const name=state.current.filename?.replace(/\.[^.]+$/,'') || slug || 'text';
   download(copy,name+'-reading-copy.html','text/html;charset=utf-8');
-  notify('Reading copy saved with the current manuscript embedded.');
+  notify('Reading copy saved with this text embedded.');
 });
 
 let epubExportDocument = null;
@@ -1609,7 +2369,7 @@ $('export-epub').addEventListener('click', () => {
   if (!state.current || state.busy) return;
   const metadata = state.current.metadata || {};
   epubExportDocument = state.current;
-  $('epub-book-title').value = readingLabel(state.current) || 'Untitled manuscript';
+  $('epub-book-title').value = readingLabel(state.current) || 'Untitled text';
   $('epub-author').value = typeof metadata.author === 'string' ? metadata.author : '';
   const language = metadata.language || metadata.lang || 'en';
   $('epub-language').value = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(language) ? language : 'en';
@@ -1625,7 +2385,7 @@ $('export-epub').addEventListener('click', () => {
 $('epub-form').addEventListener('submit', async event => {
   event.preventDefault();
   if (!state.current || state.current !== epubExportDocument || state.busy) {
-    $('epub-error').textContent = 'The manuscript changed. Close this dialog and start the export again.';
+    $('epub-error').textContent = 'The open text changed. Close this dialog and start the export again.';
     $('epub-error').hidden = false; return;
   }
   const button = $('epub-save'); button.disabled = true; button.setAttribute('aria-busy', 'true');
@@ -1637,12 +2397,13 @@ $('epub-form').addEventListener('submit', async event => {
     const title = $('title-content').querySelector('h1');
     if (title) root.append(inert.importNode(title, true));
     root.append(...inert.importNode($('manuscript'), true).childNodes);
-    root.querySelectorAll('.footnote-ref,.legacy-note-ref').forEach(el=>{el.hidden=false;el.closest('sup')?.removeAttribute('hidden');});
+    root.querySelectorAll('.footnote-ref,.legacy-note-ref').forEach(el=>{el.hidden=false;el.closest('sup')?.removeAttribute('hidden');el.closest('.reader-note-marker')?.classList.remove('note-off');});
+    root.querySelectorAll('.note-tail').forEach(tail=>tail.replaceWith(...tail.childNodes));
     const anySource=state.parallel?.pairs.some(pair=>pair.sourceVisible),anyEnglish=!state.parallel?.pairs.length || state.parallel.pairs.some(pair=>!pair.sourceVisible);
     root.querySelectorAll('.footnotes').forEach(el=>{el.hidden=el.classList.contains('source-footnotes')?!anySource:!anyEnglish;});
     const current = state.current;
     const options = {root, title: $('epub-book-title').value.trim(), author: $('epub-author').value.trim(),
-      language: $('epub-language').value.trim(), source: current.githubURL || current.sourceURL || '', specimen: current.kind === 'specimen'};
+      language: $('epub-language').value.trim(), source: current.githubURL || current.sourceURL || '', specimen: current.kind === 'specimen', restricted: isRestricted(current)};
     await new Promise(resolve => setTimeout(resolve, 30));
     const result = LukijaEPUB.build(options);
     let filename = result.title.normalize('NFKC').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-').replace(/^\.+|\.+$/g, '').trim().slice(0, 120) || 'manuscript';
@@ -1686,23 +2447,25 @@ const SPECIMEN_SOURCE = `# བོད་ཡིག
 དཔེ་ཆ། བོད་ཡིག
 `;
 function specimenDescriptor() {return {id:'specimen',kind:'specimen',title:'The shape of a reading page',number:null,text:SPECIMEN,sourceText:SPECIMEN_SOURCE,sourceLanguage:'bo'};}
-$('demo-button').addEventListener('click',()=>loadDocument(specimenDescriptor()));
+$('demo-button').addEventListener('click',()=>{ if ($('settings-dialog').open) closeDialog('settings-dialog'); loadDocument(specimenDescriptor()); });
 
 document.addEventListener('keydown',e=>{
   const editing=e.target.matches('input,textarea,select,[contenteditable="true"]');
   if (e.key==='Escape') {
     if (!$('selection-menu').hidden) {closeSelectionMenu();return;}
+    if ($('settings-dialog').open && !isModal($('settings-dialog'))) {closeSettings();return;}
     if (document.querySelector('dialog[open]')) return;
     if (document.body.classList.contains('nav-open')) {e.preventDefault();closeNav();return;}
-    if (document.body.classList.contains('focus-mode')) {document.body.classList.remove('focus-mode');syncFocus();}
+    if (document.body.classList.contains('focus-mode')) {document.body.classList.remove('focus-mode');showChrome(false);syncFocus();}
     return;
   }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase()==='k') {e.preventDefault();showSearch();return;}
-  if (editing || e.metaKey || e.ctrlKey || e.altKey || document.querySelector('dialog[open]')) return;
+  if (editing || e.metaKey || e.ctrlKey || e.altKey || document.querySelector('dialog[open]') || state.settings.shortcuts===false) return;
   if (e.key==='/') {e.preventDefault();showSearch();}
+  else if (e.key.toLowerCase()==='t') {e.preventDefault();toggleActivePassage();}
   else if (e.key.toLowerCase()==='f') {e.preventDefault();toggleFocus();}
   else if (e.key.toLowerCase()==='b') {e.preventDefault();bookmarkPosition();}
-  else if (e.key.toLowerCase()==='l') {e.preventDefault();showLibrary();}
+  else if (e.key.toLowerCase()==='l' && LOCAL_TEXTS) {e.preventDefault();showLibrary();}
 });
 
 async function start() {
@@ -1724,8 +2487,10 @@ async function start() {
     }
     startCatalog();
     if (params.has('work')) {await loadDocument(collectionDescriptor(params.get('work'),params.get('file')),{updateURL:false,section:location.hash}); return;}
-    if ((!CONFIG.autoLoad || !CONFIG.initialFile) && !params.has('src') && !params.has('file')) { updateLocation(null,'',true,'collection'); return; }
-    const descriptor=params.get('src') ? fromURL(params.get('src')) : fromProject(params.get('file') || CONFIG.initialFile);
+    // A link to someone else's file opens only where opening one's own files is allowed.
+    const src=LOCAL_TEXTS ? params.get('src') : null;
+    if ((!CONFIG.autoLoad || !CONFIG.initialFile) && !src && !params.has('file')) { updateLocation(null,'',true,'collection'); return; }
+    const descriptor=src ? fromURL(src) : fromProject(params.get('file') || CONFIG.initialFile);
     await loadDocument(descriptor,{updateURL:false,section:location.hash});
     // Discover only on hosted sites; local files do not generate additional requests.
     if (/^https?:$/.test(location.protocol) && state.current?.kind==='repository') discoverVolumes();

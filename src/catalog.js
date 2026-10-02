@@ -54,12 +54,15 @@ function configuredWork(item,index) {
   if (typeof id!=='string' || !/^[a-zA-Z0-9._-]+$/.test(id)) throw new Error(`Work ${index+1} has an invalid id.`);
   if (item.sections!==undefined && (!Array.isArray(item.sections) || item.sections.some(s=>!s || typeof s.english!=='string' || typeof s.source!=='string' || !s.english || !s.source))) throw new Error(`Work ${index+1} has invalid section mappings.`);
   if (item.sourceLanguage!==undefined && !/^[a-z]{2,3}(?:-[A-Za-z0-9]+)*$/.test(item.sourceLanguage)) throw new Error(`Work ${index+1} has an invalid source language.`);
-  return {id,repository:item.repository,title:String(item.title || item.repository.split('/')[1].replace(/[-_]/g,' ')),originalTitle:String(item.originalTitle || ''),description:String(item.description || ''),sourceLanguage:item.sourceLanguage || 'bo',sectionMap:(item.sections || []).map(s=>({...s})),englishUrl:english.githubURL,sourceUrl:source.githubURL,branch:english.ref || '',owner:english.owner || '',english,source,directory:english.kind==='directory'?english.path:'',volumes:[],checkedAt:0,attemptedAt:0,error:'',sourceError:'',stale:null,pending:null};
+  if (item.restricted!==undefined && typeof item.restricted!=='boolean') throw new Error(`Work ${index+1} must give restricted as true or false.`);
+  return {id,repository:item.repository,title:String(item.title || item.repository.split('/')[1].replace(/[-_]/g,' ')),originalTitle:String(item.originalTitle || ''),description:String(item.description || ''),sourceLanguage:item.sourceLanguage || 'bo',restricted:item.restricted===true,sectionMap:(item.sections || []).map(s=>({...s})),englishUrl:english.githubURL,sourceUrl:source.githubURL,branch:english.ref || '',owner:english.owner || '',english,source,directory:english.kind==='directory'?english.path:'',volumes:[],checkedAt:0,attemptedAt:0,error:'',sourceError:'',stale:null,pending:null};
 }
 function create(onChange=()=>{},config) {
-  let error='',works=[];
+  let error='',works=[],localTexts=true;
   try {
     config=config===undefined?embeddedConfig():config;
+    // Opening one's own files is on unless a collection turns it off.
+    localTexts=config?.localTexts!==false;
     if (!config || !Array.isArray(config.works)) throw new Error('Reader configuration must contain a works array.');
     const errors=[];
     config.works.forEach((item,index)=>{try {const work=configuredWork(item,index);if(works.some(w=>w.id===work.id)) throw new Error(`Duplicate work id: ${work.id}.`);works.push(work);}catch(e){errors.push(e.message);}});
@@ -171,6 +174,20 @@ function create(onChange=()=>{},config) {
     rememberInline(entry.sha,bytes);
     return [{...entry,via:'raw',stale:'unverified',savedAt:null}];
   }
+  // The English text's word count, from the edge (never from the text itself, which a
+  // restricted work must not send before the reader confirms).
+  async function wordCount(id) {
+    const work=get(id);
+    if(!work || work.english.kind!=='file' || !work.english.github || edge==='off')return null;
+    try {
+      const {response,bytes}=await request(edgeURL('words',work.english),{headers:{Accept:'application/json'},limit:65536});
+      if(response.headers.get('x-reader-edge')!=='1'){edge='off';return null;}
+      edge='on';const body=json(bytes);return Number.isSafeInteger(body.words) ? body.words : null;
+    } catch(error) {
+      if(error.notEdge || (!error.edge && [404,405,501].includes(error.status)))edge='off';
+      return null;
+    }
+  }
   async function list(endpoint,cache,onProgress,bodies=false) {
     if(!endpoint.github)return [{path:endpoint.path,name:endpoint.path,sha:'',size:0}];
     if(edge!=='off') {
@@ -263,7 +280,7 @@ function create(onChange=()=>{},config) {
   }
   async function readFile(endpoint,file,signal,onProgress) {
     if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
-    if(file.size>LIMIT)throw new Error('This text exceeds the 4 MB manuscript limit.');
+    if(file.size>LIMIT)throw new Error('This text exceeds the 4 MB limit for a text.');
     const url=locations(endpoint,file.path).url;let bytes,transferred=0,totalBytes=file.size || null;
     const report=phase=>notifyProgress(onProgress,{loadedBytes:transferred,totalBytes,phase});
     const download=async(target,headers)=>{
@@ -333,7 +350,7 @@ function create(onChange=()=>{},config) {
     }
     return null;
   }
-  return {works,get,descriptor,refresh,refreshAll,read,identify,error,interval:INTERVAL,get edge(){return edge;}};
+  return {works,get,descriptor,refresh,refreshAll,read,identify,wordCount,error,localTexts,interval:INTERVAL,get edge(){return edge;}};
 }
 window.ReaderCatalog=Object.freeze({create});
 window.LukijaCatalog=window.ReaderCatalog;

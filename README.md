@@ -2,29 +2,34 @@
 
 [Open the reader](https://reader.padma.io) · [Browser checks](https://github.com/Lotus-King-Research/Reader/actions/workflows/ci.yml)
 
-An English–Tibetan reader built from [Lukija](https://github.com/mikkokotila/Lukija), with its history preserved. Published manuscripts stay in their source repositories. The reader loads a configured English translation and Tibetan source together; select a passage, right-click, and choose **Show Tibetan**. Select the Tibetan and choose **Show English** to return. A selection spanning passages switches those passages together. On touch screens, the same menu appears after text selection. Other passages retain their language.
+An English–Tibetan reader built from [Lukija](https://github.com/mikkokotila/Lukija), with its history preserved. Published texts stay in their source repositories. The reader loads a configured English translation and Tibetan source together; select a passage, right-click, and choose **Show Tibetan**. Select the Tibetan and choose **Show English** to return. A selection spanning passages switches those passages together. On touch screens, the same menu docks above the footer after text selection. With the keyboard, **T** switches the passage being read, and the menu key or Shift+F10 opens its menu without a selection. Other passages retain their language, and the passages a reader switched are remembered for that edition.
+
+## Reading
+
+Reopening a text returns to the passage where reading stopped; following a link to a passage does not overwrite that place, and the notice offers the way back. The collection card shows the section and share read. The address follows reading as the authored pair ID (`#DTG-000455`; any case, with or without `md-`, resolves), so a copied URL or a reload lands on the passage. The selection menu copies plain text, a citation (the selected words, the same passages in the other language, the work, passage IDs and edition IDs, as plain and rich text), or a link, and on GitHub-hosted works opens a prefilled correction issue. The contents nest sections under chapters and follow the reader; the footer names the chapter and section. Appearance (palette, with Auto following the system; text and Tibetan size; line length and spacing; single-key shortcuts) opens beside the page. Focus mode clears the toolbar, footer and contents until the top edge, keyboard focus or a scroll up asks for them.
 
 ## Publish a text
 
-On a feature branch, edit `public/reader-config.json`, add a work, and run `npm run build`. Open a pull request; merging it after validation publishes the work automatically. The collection includes [Dra Thal Gyur](https://github.com/Lotus-King-Translation/Dra-Thal-Gyur), [Togden Rinpoche’s Gongchig Commentary](https://github.com/Lotus-King-Translation/Togden-Gongchig-Drelwa), [Gongchig Chawa](https://github.com/Lotus-King-Translation/Gongchig-Chawa), and [Togden Rinpoche’s Refuge Instructions](https://github.com/Lotus-King-Translation/Togden-Nangpa-Sangyepa), each loaded from its canonical paired Tibetan source and English translation. The latter three are annotated working translations against provisional sources.
+On a feature branch, edit `public/reader-config.json`, add a work, and run `npm run build`; the build also writes `public/sitemap.xml` from the configured works (`robots.txt` only points to it, since crawl policy is set at the Cloudflare zone). Open a pull request; merging it after validation publishes the work automatically. The collection includes [Dra Thal Gyur](https://github.com/Lotus-King-Translation/Dra-Thal-Gyur), [Togden Rinpoche’s Gongchig Commentary](https://github.com/Lotus-King-Translation/Togden-Gongchig-Drelwa), [Gongchig Chawa](https://github.com/Lotus-King-Translation/Gongchig-Chawa), [Togden Rinpoche’s Refuge Instructions](https://github.com/Lotus-King-Translation/Togden-Nangpa-Sangyepa), and [Lhenchig Kyechor](https://github.com/Lotus-King-Translation/Lhenchig-Kyechor), each loaded from its canonical paired Tibetan source and English translation. The latter four are annotated working translations against provisional sources. Dra Thal Gyur and Lhenchig Kyechor are restricted.
 
 ```json
 {
   "works": [
     {
-      "id": "example-text",
-      "repository": "Lotus-King-Research/Example-Text",
-      "title": "Example text",
-      "originalTitle": "དཔེ་ཆ།",
-      "englishUrl": "https://github.com/Lotus-King-Research/Example-Text/blob/main/translation/en.md",
-      "sourceUrl": "https://github.com/Lotus-King-Research/Example-Text/blob/main/source/bo.md",
+      "id": "dra-thal-gyur",
+      "repository": "Lotus-King-Translation/Dra-Thal-Gyur",
+      "title": "Dra Thal Gyur",
+      "originalTitle": "སྒྲ་ཐལ་འགྱུར།",
+      "description": "Paired Tibetan source and English translation.",
+      "englishUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Dra-Thal-Gyur/main/paired/translation.md",
+      "sourceUrl": "https://raw.githubusercontent.com/Lotus-King-Translation/Dra-Thal-Gyur/main/paired/source.md",
       "sourceLanguage": "bo"
     }
   ]
 }
 ```
 
-The repository name and two URLs are required. Other fields are optional. Use public Markdown or UTF-8 text URLs; GitHub blob and raw URLs work. A pair of GitHub tree URLs supports a collection of nested files, matched by their relative filenames. Any `.md`, `.markdown`, or `.txt` filename works. Use distinct IDs when multiple entries use the same repository.
+The repository name and two URLs are required. Other fields are optional. Set `"restricted": true` on a work that needs authorization: its card and the top of the text carry a lock and the word Restricted, and opening it (from its card, the contents or a link) first asks the reader to confirm they have the required authorization, with No and Yes; nothing is downloaded before Yes, the confirmation lasts for the visit, offline copies and EPUBs keep the mark, and the work is left out of the sitemap. This is an acknowledgement, not access control: the files remain wherever they are published. Use public Markdown or UTF-8 text URLs; GitHub blob and raw URLs work. A pair of GitHub tree URLs supports a collection of nested files, matched by their relative filenames. Any `.md`, `.markdown`, or `.txt` filename works. Use distinct IDs when multiple entries use the same repository.
 
 A work card opens its text directly. Directory collections show available editions in a dropdown on the card. The loading bar reports source transfer and page preparation progress; an already open text resumes without downloading again. The collection can be searched by title, source title, or repository. Text loading and edition discovery happen on demand. Every GitHub text is checked against its Git blob SHA-1 before it is shown, with update checks for the active work every five minutes while visible. A newer revision requires **Load latest**; it never replaces a passage mid-read.
 
@@ -51,15 +56,15 @@ For ordinary Markdown, a leading H1 is the work title. Subsequent headings divid
 
 Give stable IDs to Markdown headings with HTML such as `<h2 id="opening">The opening</h2>`. Use the original ID in configuration (the reader also accepts its `md-` prefixed form). Explicit maps disable ordinal fallback. Unmatched sections stay English; Copy remains available in the selection menu. Introductory text before the first section uses `opening`; avoid using that ID on a heading. A text without headings is treated as one section.
 
-A missing or invalid Tibetan source leaves the English translation readable and displays the failure. Source texts retain their own notes and links. The sticky toolbar’s notes icon shows or hides endnote references and endnotes; they are hidden by default. In paired-text manuscripts, standalone references attach to the preceding passage, links to individual notes in `NOTES.md` or `LEGACY-NOTES.md` become optional superscripts, and repeated “Earlier notes” paragraphs are omitted from the reading page. The original Markdown remains unchanged. English heading labels remain the navigation outline in either language. Search includes both languages and reveals the language of the selected result.
+A missing or invalid Tibetan source leaves the English translation readable and displays the failure. Source texts retain their own notes and links. The sticky toolbar’s notes icon shows or hides endnote references and endnotes; they are hidden by default. In paired-text manuscripts, standalone references attach to the preceding passage, links to individual notes in `NOTES.md` or `LEGACY-NOTES.md` become optional superscripts, and repeated “Earlier notes” paragraphs are omitted from the reading page. The original Markdown remains unchanged. English heading labels remain the navigation outline in either language. Search includes both languages and reveals the language of the selected result; results are labelled with the English section, Tibetan spellings of the same syllables fold together, Latin diacritics are ignored, and long result lists show more on request. Notes in `NOTES.md` and earlier translation notes in `LEGACY-NOTES.md` open in the note panel, and golden critical notes show their comment and confidence with sources and review in a disclosure.
 
 ## Typography and export
 
-Noto Sans Tibetan Regular is bundled and embedded into the standalone HTML, including offline exports. It is the requested Noto **Sans** Tibetan font from the official Noto archive, not a substituted Serif font. The SIL Open Font License and provenance are in `public/fonts/`.
+Noto Serif Tibetan Regular 2.103 is bundled and embedded into the standalone HTML, including offline exports. It is the current release of the design previously bundled as Noto Sans Tibetan 1.01, whose shaping drew a dotted circle inside Sanskrit stacks such as the title of Dra Thal Gyur. It is subset to the Tibetan block and compressed as WOFF2. The SIL Open Font License, provenance and the exact subsetting command are in `public/fonts/`.
 
-Local Markdown files and pasted texts stay on the device. **Manuscript & source** provides Markdown download, offline HTML, EPUB, and printing. An offline HTML copy includes both loaded manuscripts and the font; section switches work without network access. EPUB includes the currently visible language of each section, with language tags and relevant endnotes regardless of the on-screen notes toggle. Its font choice depends on the reading device; the Tibetan font is not embedded in EPUB. No translation is generated or corrected. The typography specimen is synthetic interface documentation.
+Local Markdown files and pasted texts stay on the device. A collection can turn opening one's own files off with `"localTexts": false` at the top of its configuration, as reader.padma.io does; offline copies still open. **Download & export** provides Markdown download, offline HTML, EPUB, and printing. An offline HTML copy includes both loaded texts and the font; section switches work without network access. EPUB includes the currently visible language of each section, with language tags and relevant endnotes regardless of the on-screen notes toggle. Its font choice depends on the reading device; the Tibetan font is not embedded in EPUB. No translation is generated or corrected. The typography specimen is synthetic interface documentation.
 
-Preferences, positions, and bookmarks use browser storage; manuscript bodies are never stored there. Markdown is sanitized before display. Files are limited to 4 MB each. No analytics or account flow is included. The edge Worker keeps no request logs, and its saved copies contain only the published files listed in the configuration.
+Preferences, positions, bookmarks and the IDs of switched passages use browser storage; text is never stored there. Two local files that are the halves of one paired text (same schema and `text-id`, English and a source language) open together. Markdown is sanitized before display. Files are limited to 4 MB each. No analytics or account flow is included. The edge Worker keeps no request logs, and its saved copies contain only the published files listed in the configuration.
 
 ## Development
 

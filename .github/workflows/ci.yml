@@ -22,7 +22,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm test
       - name: Check that the committed build matches its sources
-        run: git diff --exit-code -- public/index.html
+        run: git diff --exit-code -- public/index.html public/sitemap.xml
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin

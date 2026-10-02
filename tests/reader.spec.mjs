@@ -64,7 +64,10 @@ test('root text, quoted voices and ordinary terms remain distinct', async ({page
   await expect(page.locator('#manuscript .citation-block')).not.toContainText(['quoted term','quoted term']);
 });
 test('original source is byte-for-byte unchanged', async ({page}) => {
-  await load(page); await source(page); await expect(page.locator('#source-textarea')).toHaveValue(sample);
+  await load(page); await source(page);
+  const download = page.waitForEvent('download'); await page.locator('#download-markdown').click();
+  const chunks = []; for await (const chunk of await (await download).createReadStream()) chunks.push(chunk);
+  expect(Buffer.concat(chunks).toString()).toBe(sample);
 });
 test('EPUB is a complete package with well-formed XML', async ({page},info) => {
   await load(page); await epubDialog(page); const {files}=await epubDownload(page,info);
@@ -151,7 +154,6 @@ test('reader and EPUB dialog do not overflow the viewport', async ({page}) => {
   const box=await page.locator('#epub-dialog').boundingBox(); expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x+box.width).toBeLessThanOrEqual(page.viewportSize().width+1);
 });
 test('specimen exports are explicitly labelled as specimens', async ({page},info) => {
-  if (await page.locator('#mobile-menu').isVisible()) await page.click('#mobile-menu');
-  await page.click('#demo-button'); await expect(page.locator('#manuscript')).toBeVisible(); await epubDialog(page);
+  await page.click('#settings-trigger'); await page.click('#demo-button'); await expect(page.locator('#manuscript')).toBeVisible(); await epubDialog(page);
   const {files}=await epubDownload(page,info,'specimen'); expect(files['EPUB/title.xhtml']).toContain('not a translation');
 });

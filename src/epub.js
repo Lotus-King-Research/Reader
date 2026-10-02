@@ -41,7 +41,7 @@
       c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, path.length, true);
       c.setUint32(42, offset, true); central.set(path, 46); directory.push(central);
       offset += header.length + data.length; directoryLength += central.length;
-      if (offset > 100 * 1024 * 1024) throw new Error('This EPUB exceeds the 100 MB export limit. Export a smaller manuscript.');
+      if (offset > 100 * 1024 * 1024) throw new Error('This EPUB exceeds the 100 MB export limit. Export a smaller text.');
     }
     const end = new Uint8Array(22), e = new DataView(end.buffer);
     e.setUint32(0, 0x06054b50, true); e.setUint16(8, entries.length, true); e.setUint16(10, entries.length, true);
@@ -59,7 +59,9 @@ h3 { font-size: 1.2em; margin: 1.5em 0 .7em; }
 p { margin: 0 0 1em; orphans: 3; widows: 3; }
 a { text-decoration: underline; }
 [lang|="zh"] { font-family: "Songti SC", "Songti TC", "Noto Serif CJK TC", "Noto Serif CJK SC", "PMingLiU", serif; line-height: 1.9; }
-[lang|="bo"] { font-family: "Noto Sans Tibetan", sans-serif; line-height: 2; }
+[lang|="bo"] { font-family: "Noto Serif Tibetan", "Noto Sans Tibetan", serif; line-height: 2; }
+.paired-verse p { text-indent: 1.5em hanging each-line; }
+.tibetan-sign { text-align: center; text-indent: 0; color: #9e3c2c; font-size: 1.4em; margin: 1.4em 0 .3em; }
 blockquote { margin: 1.3em 0 1.3em 1em; padding: .3em 0 .3em 1em; border-left: 2px solid #9e3c2c; }
 figure.citation-block { margin: 1.7em 0 1.7em .6em; padding: .4em 0 .4em 1em; border-left: 2px solid #9e3c2c; }
 .citation-attribution { margin-bottom: .8em; page-break-after: avoid; break-after: avoid; }
@@ -133,7 +135,7 @@ nav ol { padding-left: 1.3em; } nav li { margin: .6em 0; }
     body.querySelectorAll('a').forEach(a => {
       const local = a.getAttribute('data-local-link');
       const href = a.getAttribute('href') || '';
-      if (local) { a.removeAttribute('href'); a.setAttribute('title', `Local manuscript link: ${local}`); }
+      if (local) { a.removeAttribute('href'); a.setAttribute('title', `Local link: ${local}`); }
       else if (href.startsWith('#')) {
         let target; try { target = decodeURIComponent(href.slice(1)); } catch (_) { target = href.slice(1); }
         if (ids.has(target)) a.setAttribute('href', `#${ids.get(target)}`);
@@ -183,9 +185,9 @@ nav ol { padding-left: 1.3em; } nav li { margin: .6em 0; }
     const render = list => `<ol>${list.map(h => `<li><a href="content.xhtml#${escapeXML(h.id)}">${escapeXML(h.text)}</a>${h.children.length ? render(h.children) : ''}</li>`).join('')}</ol>`;
     return render(root);
   }
-  function build({root, title = 'Untitled manuscript', author = '', language = 'en', source = '', identifier = '', date = new Date(), specimen = false}) {
+  function build({root, title = 'Untitled text', author = '', language = 'en', source = '', identifier = '', date = new Date(), specimen = false, restricted = false}) {
     if (!root || typeof root.cloneNode !== 'function') throw new TypeError('An already-sanitized manuscript DOM is required.');
-    title = clean(title).trim().slice(0, 500) || 'Untitled manuscript';
+    title = clean(title).trim().slice(0, 500) || 'Untitled text';
     author = clean(author).trim().slice(0, 500); language = validLanguage(language);
     if (!(date instanceof Date) || !Number.isFinite(date.getTime())) throw new TypeError('A valid export date is required.');
     const uuid = globalThis.crypto?.randomUUID?.() || 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -197,7 +199,8 @@ nav ol { padding-left: 1.3em; } nav li { margin: .6em 0; }
     const content = normalizedBody(root, language), headings = content.headings;
     const modified = date.toISOString().replace(/\.\d{3}Z$/, 'Z');
     const esc = escapeXML;
-    const notice = specimen ? '<p class="export-notice">Typography specimen only. This is not a translation of the source work.</p>' : '';
+    const notice = (specimen ? '<p class="export-notice">Typography specimen only. This is not a translation of the source work.</p>' : '')
+      + (restricted ? '<p class="export-notice">Restricted text. Read it only with the required authorization.</p>' : '');
     const images = content.imageCount ? `<p class="export-notice">${content.imageCount} image${content.imageCount === 1 ? ' is' : 's are'} represented by descriptive links. Linked images are not embedded and require an internet connection.</p>` : '';
     const titlepage = xhtml(title, language, `<section epub:type="titlepage" class="titlepage"><p class="edition">Reader · Reading edition</p><h1>${esc(title)}</h1>${author ? `<p>${esc(author)}</p>` : ''}${notice}${images}<p><a href="nav.xhtml">Contents</a></p>${source ? `<p class="export-notice"><a href="${esc(source)}">Manuscript source</a></p>` : ''}</section>`);
     const navigation = xhtml('Contents · ' + title, language, `<nav epub:type="toc" id="toc" role="doc-toc"><h1>Contents</h1>${headings.length ? navList(headings) : '<ol><li><a href="content.xhtml">' + esc(title) + '</a></li></ol>'}</nav><nav epub:type="landmarks" hidden="hidden"><h2>Guide</h2><ol><li><a epub:type="titlepage" href="title.xhtml">Title page</a></li><li><a epub:type="bodymatter" href="content.xhtml">Start reading</a></li></ol></nav>`);

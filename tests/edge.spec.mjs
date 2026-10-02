@@ -1,5 +1,6 @@
 import {test, expect} from '@playwright/test';
 import {mockCatalog, blobSHA, names} from './catalog-fixture.mjs';
+import {countWords} from '../src/words.js';
 
 // Emulates the same-origin edge API in worker/ (unit-tested in tests/unit/edge.test.mjs).
 async function mockEdge(page, fixture, options = {}) {
@@ -12,6 +13,7 @@ async function mockEdge(page, fixture, options = {}) {
     if (text === undefined) return route.fulfill({status: 404, headers: json, body: '{"error":"Not in the collection."}'});
     const fetchedAt = edge.state === 'stale' ? edge.savedAt : new Date().toISOString();
     const headers = {'x-reader-edge': '1', 'x-reader-blob-sha': blobSHA(text), 'x-reader-cache': edge.state, 'x-reader-fetched-at': fetchedAt};
+    if (url.pathname.endsWith('/words')) return route.fulfill({headers: {...headers, ...json}, body: JSON.stringify({path, sha: blobSHA(text), words: countWords(text), fetchedAt, cache: edge.state})});
     if (url.pathname.endsWith('/meta')) return route.fulfill({headers: {...headers, ...json}, body: JSON.stringify({path, sha: blobSHA(text), size: Buffer.byteLength(text), fetchedAt, cache: edge.state})});
     return route.fulfill({headers: {...headers, 'content-type': 'text/plain; charset=utf-8'}, body: text});
   });
@@ -88,4 +90,15 @@ test('a host without the edge API is detected once and then left alone', async (
   await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 300)));
   expect(probes).toHaveLength(afterOpen);
   expect(fixture.requests.some(url => url.startsWith('https://api.github.com/'))).toBe(true);
+});
+
+test('collection cards say how many words each translation is, from the edge, not the description', async ({page}) => {
+  const fixture = await mockCatalog(page); const edge = await mockEdge(page, fixture);
+  await page.goto('/');
+  const card = page.locator('[data-work="paired-text"]');
+  const expected = countWords(fixture.files['Example-Text']['translation/en.md']);
+  await expect(card.locator('.work-card-words')).toHaveText(`${expected} words`);
+  await expect(card.locator('.work-card-detail')).toHaveCount(0);
+  expect(edge.requests.filter(path => path.endsWith('/file'))).toEqual([]);
+  expect(fixture.requests).toEqual([]);
 });
